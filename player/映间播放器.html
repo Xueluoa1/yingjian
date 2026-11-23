@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>映间播放器</title>
+  <style>
+    :root{--paper:#f4f5f5;--panel:#fff;--ink:#202825;--muted:#717c76;--mint:#b9f3e4;--soft:#edf5f1}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.7 "Segoe UI","Microsoft YaHei UI",sans-serif}
+    main{max-width:1100px;margin:0 auto;padding:46px 40px 28px}.brand{display:flex;align-items:center;gap:12px;font-size:23px;font-weight:650;letter-spacing:.1em}.brand svg{width:36px;height:36px}.brand small{font-size:13px;letter-spacing:0;color:var(--muted);font-weight:400;margin-left:8px}
+    .layout{display:grid;grid-template-columns:1fr 1fr;gap:70px;align-items:center;min-height:650px}.intro{padding:15px 0}h1{font-size:42px;line-height:1.4;font-weight:650;letter-spacing:-.04em;margin:20px 0}p{color:var(--muted);margin:12px 0}.intro p{max-width:340px;line-height:1.9}.picture{height:150px;margin:34px 0 10px;position:relative;display:flex;align-items:center;gap:18px}.screen{width:205px;height:126px;background:var(--mint);border-radius:16px;display:grid;place-items:center;position:relative}.screen::after{content:"";position:absolute;width:84px;height:7px;background:var(--ink);border-radius:7px;bottom:-15px}.screen svg{width:44px;height:44px}.connector{width:32px;height:2px;background:#b8c9bf}.source{width:55px;height:75px;border-radius:12px;background:#e2e8e5;display:grid;place-items:center}.source svg{width:30px;height:30px}
+    .panel{background:var(--panel);border-radius:24px;padding:36px}h2{margin:0 0 8px;font-size:23px;font-weight:600}.panel>p{margin:0 0 28px;font-size:14px}label{display:block;font-size:14px;font-weight:600;margin:0 0 10px}input{width:100%;background:var(--paper);border:0;border-radius:12px;padding:17px 16px;font:15px/1.4 "Segoe UI","Microsoft YaHei UI",sans-serif;color:var(--ink)}input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #46ac8c;outline-offset:4px}input::placeholder{color:#8c9890}button{font:inherit;cursor:pointer;border:0;border-radius:999px;padding:13px 22px;color:#fff;background:var(--ink);transition:background .15s}button:hover{background:#3b5045}.primary{width:100%;margin-top:20px}.help{font-size:12px;margin:9px 0 0;line-height:1.8}.error{font-size:13px;color:#a53730;margin:8px 0 0;min-height:22px}.recent{margin-top:24px;padding-top:4px}.recent span{display:block;color:var(--muted);font-size:12px;margin-bottom:8px}.recent button{width:100%;text-align:left;background:var(--soft);color:var(--ink);font:14px/1.5 Consolas,monospace;overflow-wrap:anywhere}.steps{padding:20px 0 0;margin:0;list-style:none;font-size:13px;color:var(--muted)}.steps li{margin:9px 0;display:flex;gap:10px}.steps b{font-weight:500;flex-shrink:0;background:var(--soft);border-radius:50%;width:23px;height:23px;text-align:center;color:var(--ink)}footer{color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:20px}.tag{display:inline-block;font-size:12px;border-radius:99px;background:var(--soft);padding:6px 13px}
+    @media(max-width:760px){main{padding:24px}.layout{grid-template-columns:1fr;gap:24px;min-height:0;margin:25px 0 35px}.intro{padding:0}h1{font-size:32px;margin:14px 0}.intro p{max-width:100%}.picture{display:none}.panel{padding:25px}.brand small{margin-left:0}.tag{display:none}footer{display:block}footer span{display:block;margin:6px 0}}
+    @media(prefers-reduced-motion:reduce){button{transition:none}}
+  </style>
+</head>
+<body>
+  <main>
+    <header class="brand"><svg viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="11" fill="#b9f3e4"/><path d="m14 10 12 8-12 8z" fill="#202825"/></svg>映间 <small>电脑播放器</small></header>
+    <div class="layout">
+      <section class="intro">
+        <span class="tag">家庭局域网 · 共享片源与进度</span>
+        <h1>家里的片库，<br>在这台电脑继续。</h1>
+        <p>连接电脑或 NAS 上的映间服务端。<br>收藏、片源和上次看到的地方，都在这里。</p>
+        <div class="picture" aria-hidden="true">
+          <div class="screen"><svg viewBox="0 0 48 48"><path d="m18 11 21 13-21 13z" fill="#202825"/></svg></div><i class="connector"></i>
+          <div class="source"><svg viewBox="0 0 32 32" fill="none" stroke="#64786b" stroke-width="2"><rect x="4" y="5" width="24" height="9" rx="2"/><rect x="4" y="19" width="24" height="9" rx="2"/><path d="M8 9.5h3m-3 14h3m5-14h8m-8 14h8"/></svg></div>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="connect-heading">
+        <h2 id="connect-heading">连接家里的映间</h2>
+        <p>服务端和这台电脑需要连接同一个网络。</p>
+        <form id="connect-form">
+          <label for="address">服务端地址或完整连接链接</label>
+          <input id="address" name="address" required placeholder="192.168.1.100:8080" autocomplete="off" spellcheck="false" aria-describedby="address-help connect-error">
+          <p class="help" id="address-help">在服务端的「连接设备」中查看地址，也可以粘贴完整配对链接。</p>
+          <p class="error" id="connect-error" role="alert"></p>
+          <button class="primary" type="submit">前往连接 →</button>
+        </form>
+        <div class="recent" id="recent" hidden><span>上次使用 · 直接进入片库</span><button id="last-server" type="button"></button></div>
+        <ol class="steps"><li><b>1</b>在电脑或 NAS 上启动服务端。</li><li><b>2</b>打开地址后，输入服务端生成的六位连接码。</li></ol>
+      </section>
+    </div>
+    <footer><span>映间播放器 · 使用浏览器播放</span><span>电脑或 NAS 服务端需要保持运行</span></footer>
+  </main>
+  <script>
+    'use strict';
+    const address = document.getElementById('address');
+    const recent = document.getElementById('recent');
+    const lastServer = document.getElementById('last-server');
+    function parseAddress(value) {
+      const raw = value.trim();
+      if (!raw) throw new Error('请先填写服务端地址。');
+      const url = new URL(/^https?:\/\//i.test(raw) ? raw : 'http://' + raw);
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || !url.hostname || /[\s\\]/.test(raw)) throw new Error('请填写有效的 HTTP 或 HTTPS 服务端地址。');
+      // Only the service origin and pairing token are carried to the known connection page.
+      return url;
+    }
+    function remember(origin) { try { localStorage.setItem('yingjian.player.origin', origin); } catch {} }
+    try {
+      const saved = localStorage.getItem('yingjian.player.origin');
+      if (saved) {
+        const url = parseAddress(saved);
+        address.value = url.origin;
+        lastServer.textContent = url.host + '  →';
+        recent.hidden = false;
+        lastServer.addEventListener('click', () => location.assign(new URL('/?view=mobile', url.origin).href));
+      }
+    } catch {}
+    document.getElementById('connect-form').addEventListener('submit', event => {
+      event.preventDefault();
+      try {
+        const url = parseAddress(address.value);
+        const target = new URL('/connect?view=mobile', url.origin);
+        const token = new URLSearchParams(url.hash.slice(1)).get('pair');
+        if (token) target.hash = new URLSearchParams({ pair: token }).toString();
+        remember(url.origin);
+        location.assign(target.href);
+      } catch (error) { document.getElementById('connect-error').textContent = '地址格式不正确。请填写类似 192.168.1.100:8080 的地址或完整连接链接。'; }
+    });
+  </script>
+</body>
+</html>

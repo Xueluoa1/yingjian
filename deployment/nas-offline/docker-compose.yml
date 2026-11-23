@@ -1,0 +1,28 @@
+# Import image.tar before creating/updating this project in a NAS GUI.
+# Keep the existing project name and DATA_VOLUME when upgrading.
+services:
+  yingjian:
+    image: yingjian-server:0.1.4-nas1
+    pull_policy: never
+    container_name: yingjian-lan
+    ports:
+      - "${LAN_BIND_IP:?Set the NAS LAN IP in .env}:${HOST_PORT:?Set HOST_PORT in .env}:8080"
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      DATA_DIR: /app/data
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set an administrator password in .env}"
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:?Set the NAS LAN origin in .env}"
+    volumes:
+      - yingjian-data:/app/data
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+volumes:
+  yingjian-data:
+    name: "${DATA_VOLUME:-yingjian-data}"

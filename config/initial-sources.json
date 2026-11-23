@@ -1,0 +1,228 @@
+{
+  "origin": "https://github.com/ximishan/LibreTV-api-source",
+  "readmeSha": "f018e2a8e14c262b422dbd8f7065abb3ea96aba3",
+  "importedAt": "2026-11-12",
+  "sources": [
+    {
+      "id": "seed-1",
+      "name": "紅牛資源",
+      "type": "vod",
+      "url": "http://hongniuzy2.com/api.php/provide/vod/from/hnm3u8",
+      "enabled": false,
+      "health": {
+        "ok": false,
+        "latency": 564,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": "首次检测连接失败，可稍后重新检测"
+      }
+    },
+    {
+      "id": "seed-2",
+      "name": "量子資源",
+      "type": "vod",
+      "url": "http://cj.lziapi.com/api.php/provide/vod/from/lzm3u8",
+      "enabled": true,
+      "health": {
+        "ok": true,
+        "latency": 700,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": null
+      }
+    },
+    {
+      "id": "seed-3",
+      "name": "金鹰资源",
+      "type": "vod",
+      "url": "http://jyzyapi.com/provide/vod/from/jinyingm3u8",
+      "enabled": true,
+      "health": {
+        "ok": true,
+        "latency": 775,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": null
+      }
+    },
+    {
+      "id": "seed-4",
+      "name": "光速资源",
+      "type": "vod",
+      "url": "http://api.guangsuapi.com/api.php/provide/vod/from/gsm3u8",
+      "enabled": true,
+      "health": {
+        "ok": true,
+        "latency": 1531,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": null
+      }
+    },
+    {
+      "id": "seed-5",
+      "name": "U酷",
+      "type": "vod",
+      "url": "https://api.ukuapi.com/api.php/provide/vod",
+      "enabled": false,
+      "health": {
+        "ok": false,
+        "latency": 472,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": "首次检测连接失败，可稍后重新检测"
+      }
+    },
+    {
+      "id": "seed-6",
+      "name": "艾旦影视",
+      "type": "vod",
+      "url": "http://lovedan.net/api.php/provide/vod",
+      "enabled": false,
+      "health": {
+        "ok": false,
+        "latency": 258,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": "首次检测连接失败，可稍后重新检测"
+      }
+    },
+    {
+      "id": "seed-7",
+      "name": "360",
+      "type": "vod",
+      "url": "https://360zy.com/api.php/provide/vod",
+      "enabled": true,
+      "health": {
+        "ok": true,
+        "latency": 1381,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": null
+      }
+    },
+    {
+      "id": "seed-8",
+      "name": "豪华",
+      "type": "vod",
+      "url": "https://hhzyapi.com/api.php/provide/vod",
+      "enabled": true,
+      "health": {
+        "ok": true,
+        "latency": 536,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": null
+      }
+    },
+    {
+      "id": "seed-9",
+      "name": "极速",
+      "type": "vod",
+      "url": "https://jszyapi.com/api.php/provide/vod",
+      "enabled": true,
+      "health": {
+        "ok": true,
+        "latency": 1016,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": null
+      }
+    },
+    {
+      "id": "seed-10",
+      "name": "非凡",
+      "type": "vod",
+      "url": "http://cj.ffzyapi.com/api.php/provide/vod",
+      "enabled": true,
+      "health": {
+        "ok": true,
+        "latency": 680,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": null
+      }
+    },
+    {
+      "id": "seed-11",
+      "name": "量子",
+      "type": "vod",
+      "url": "https://cj.lziapi.com/api.php/provide/vod",
+      "enabled": true,
+      "health": {
+        "ok": true,
+        "latency": 809,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": null
+      }
+    },
+    {
+      "id": "seed-12",
+      "name": "红牛",
+      "type": "vod",
+      "url": "https://www.hongniuzy2.com/api.php/provide/vod",
+      "enabled": false,
+      "health": {
+        "ok": false,
+        "latency": 202,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": "首次检测连接失败，可稍后重新检测"
+      }
+    },
+    {
+      "id": "seed-13",
+      "name": "虎牙",
+      "type": "vod",
+      "url": "https://www.huyaapi.com/api.php/provide/vod",
+      "enabled": true,
+      "health": {
+        "ok": true,
+        "latency": 1893,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": null
+      }
+    },
+    {
+      "id": "seed-14",
+      "name": "飘零",
+      "type": "vod",
+      "url": "https://p2100.net/api.php/provide/vod",
+      "enabled": true,
+      "health": {
+        "ok": true,
+        "latency": 1652,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": null
+      }
+    },
+    {
+      "id": "seed-15",
+      "name": "魔都",
+      "type": "vod",
+      "url": "https://caiji.moduapi.cc/api.php/provide/vod",
+      "enabled": false,
+      "health": {
+        "ok": false,
+        "latency": 476,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": "首次检测连接失败，可稍后重新检测"
+      }
+    },
+    {
+      "id": "seed-16",
+      "name": "最大",
+      "type": "vod",
+      "url": "http://zuidazy.me/api.php/provide/vod",
+      "enabled": false,
+      "health": {
+        "ok": false,
+        "latency": 464,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": "首次检测连接失败，可稍后重新检测"
+      }
+    },
+    {
+      "id": "seed-17",
+      "name": "新浪",
+      "type": "vod",
+      "url": "https://api.xinlangapi.com/xinlangapi.php/provide/vod",
+      "enabled": true,
+      "health": {
+        "ok": true,
+        "latency": 975,
+        "checkedAt": "2026-11-12T03:19:31.541Z",
+        "error": null
+      }
+    }
+  ]
+}

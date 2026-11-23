@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+data
+release
+test-results
+android
+ui
+runtime
+*.log
+*.zip
+*.tar
+deploy.sh
+tests

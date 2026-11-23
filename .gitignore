@@ -1,0 +1,47 @@
+node_modules/
+.npm-cache/
+data/
+release/
+test-results/
+*.log
+android/.gradle/
+android/**/build/
+android/local.properties
+android/*.jks
+.env
+launcher-settings.json
+launcher-self-test.json
+launcher-smoke-test.json
+launcher-logs/
+
+# Local deliveries, generated packages, and editor/runtime state
+deliverables/
+coverage/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.agents/
+.codex/
+.aws/
+*.tmp
+*.partial
+
+# Deployment credentials and Android signing material
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+.signing/
+
+# Distribute binaries and offline images as release assets, not source
+*.exe
+*.apk
+*.aab
+*.zip
+*.tar
+*.tar.gz
+*.7z

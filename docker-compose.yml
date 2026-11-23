@@ -1,0 +1,20 @@
+services:
+  yingjian:
+    build:
+      context: .
+      args:
+        NODE_IMAGE: "${NODE_IMAGE:-public.ecr.aws/docker/library/node:24-alpine}"
+    container_name: yingjian-lan
+    ports:
+      - "${LAN_BIND_IP:-0.0.0.0}:8080:8080"
+    environment:
+      PORT: 8080
+      DATA_DIR: /app/data
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Please set ADMIN_PASSWORD in .env}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
+    volumes:
+      - yingjian-data:/app/data
+    restart: unless-stopped
+    stop_grace_period: 30s
+volumes:
+  yingjian-data:

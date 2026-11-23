@@ -1,0 +1,24 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'app.yingjian.lan'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+    defaultConfig {
+        applicationId 'app.yingjian.lan'
+        minSdk 23
+        targetSdk 34
+        versionCode 3
+        versionName '0.1.2'
+    }
+    flavorDimensions 'screen'
+    productFlavors {
+        phone { dimension 'screen'; applicationIdSuffix '.phone'; buildConfigField 'boolean', 'TV_MODE', 'false'; resValue 'string', 'app_name', '映间' }
+        tv { dimension 'screen'; applicationIdSuffix '.tv'; buildConfigField 'boolean', 'TV_MODE', 'true'; resValue 'string', 'app_name', '映间 TV' }
+    }
+    buildFeatures { buildConfig true }
+    signingConfigs { debug { storeFile file('../.signing/debug.keystore') } }
+    buildTypes { debug { debuggable true }; release { minifyEnabled false } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+}
+dependencies { implementation files('libs/zxing-core-3.5.3.jar') }

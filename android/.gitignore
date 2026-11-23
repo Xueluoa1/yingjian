@@ -1,0 +1,7 @@
+.gradle/
+.gradle-home/
+.android-user/
+.signing/
+local.properties
+**/build/
+tests/out/

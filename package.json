@@ -1,0 +1,23 @@
+{
+  "name": "yingjian-lan",
+  "version": "0.1.4",
+  "private": true,
+  "type": "module",
+  "description": "映间局域网家庭影音服务",
+  "author": "雪落a",
+  "scripts": {
+    "start": "node launcher/host.mjs --console",
+    "test": "node --test tests/*.test.js",
+    "check": "node --check server/index.js && node --check public/app.js && node --check launcher/host.mjs",
+    "test:deployment": "node --test deployment/nas/tests/*.test.mjs deployment/nas-offline/tests/*.test.mjs scripts/tests/*.test.mjs",
+    "prepare:github": "node scripts/prepare-github.mjs"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "hls.js": "^1.6.0",
+    "ipaddr.js": "^2.2.0",
+    "qrcode": "^1.5.4",
+    "undici": "^7.16.0"
+  },
+  "engines": { "node": ">=22.0.0" }
+}

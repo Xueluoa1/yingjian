@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111e2c">
+  <title>映间 · 家里的私人影院</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="preview-bar">
+    <a class="preview-brand" href="?view=server">映间 <span>首页设计 / 01</span></a>
+    <nav class="view-tabs" aria-label="切换首页设计">
+      <button data-view="server">服务端</button>
+      <button data-view="mobile">安卓手机</button>
+      <button data-view="tv">安卓电视</button>
+    </nav>
+    <span class="prototype-label"><i></i> 交互原型 · 演示数据</span>
+  </header>
+  <main id="app"></main>
+  <dialog id="modal" aria-labelledby="modal-title"></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
