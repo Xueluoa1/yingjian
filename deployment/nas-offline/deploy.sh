@@ -107,7 +107,15 @@ done < image-metadata.txt
 case "$IMAGE_ID" in sha256:*) digest=${IMAGE_ID#sha256:} ;; *) fail "Invalid image ID." ;; esac
 case "$digest" in *[!a-f0-9]*|'') fail "Invalid image ID." ;; esac
 [ "${#digest}" -eq 64 ] || fail "Invalid image ID."
-[ "$IMAGE_PLATFORM" = linux/amd64 ] || fail "This bundle must contain a validated linux/amd64 image."
+case "$IMAGE_PLATFORM" in
+  linux/amd64) IMAGE_TAG=yingjian-server:0.1.4-nas1 ;;
+  linux/arm64) IMAGE_TAG=yingjian-server:0.1.4-nas1-arm64 ;;
+  *) fail "This bundle must contain a validated linux/amd64 or linux/arm64 image." ;;
+esac
+if [ "$IMAGE_PLATFORM" = linux/arm64 ]; then
+  grep -Eq '^[[:space:]]+platform: linux/arm64[[:space:]]*$' "$COMPOSE_FILE_PATH" || fail "Compose platform does not match ARM64 image."
+fi
+grep -Eq "^[[:space:]]+image: $IMAGE_TAG[[:space:]]*$" "$COMPOSE_FILE_PATH" || fail "Compose image tag does not match image metadata."
 
 if [ "$ACTION" = validate ]; then
   printf '%s\n' "Configuration and image metadata are valid. NAS address: $PUBLIC_ORIGIN" \
@@ -165,9 +173,12 @@ case "$ACTION" in
 esac
 
 host_platform=$(docker info --format '{{.OSType}}/{{.Architecture}}')
-case "$host_platform" in linux/amd64|linux/x86_64) ;;
-  *) fail "This release requires a Linux x86-64 / AMD64 NAS; detected: $host_platform." ;;
+case "$host_platform" in
+  linux/amd64|linux/x86_64) host_platform=linux/amd64 ;;
+  linux/arm64|linux/aarch64) host_platform=linux/arm64 ;;
+  *) fail "Unsupported NAS architecture; expected $IMAGE_PLATFORM, detected: $host_platform." ;;
 esac
+[ "$host_platform" = "$IMAGE_PLATFORM" ] || fail "Wrong image architecture: expected $IMAGE_PLATFORM, detected $host_platform. No container was changed."
 [ -f "$IMAGE_ARCHIVE" ] && [ -f image.tar.sha256 ] ||
   fail "Missing image.tar or image.tar.sha256. Use the complete offline release."
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required to verify the offline image."

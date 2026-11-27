@@ -5,7 +5,7 @@
 - 服务端：Node.js 22+，建议 Node.js 24；通过 `npm ci` 安装锁定依赖。
 - Windows 启动器：Windows、.NET Framework 4.7.2+、Windows PowerShell。
 - Android：JDK 17、Android SDK Platform 35、Build Tools 35.0.0；见 [Android README](../android/README.md)。
-- NAS 镜像：有 Docker 引擎的 Linux AMD64 环境，或项目提供的镜像制作工具。
+- NAS 镜像：有 Docker 引擎、能运行目标 AMD64 / ARM64 架构的 Linux 环境，或使用手动云构建流程。
 
 `public/` 是实际服务使用的前端，无独立前端打包步骤。`ui/` 保留早期设计原型，其演示数据不等于实际功能。修改正式界面请编辑 `public/`。
 
@@ -38,11 +38,13 @@ node scripts/smoke-live.mjs
 .\scripts\package-player.ps1
 ```
 
-`package-server.ps1` 可以使用 `-NasOfflineBundle` 指向已经校验的完整离线包，将 NAS 镜像随 Windows 成品提供。大体积发行文件保存在 `release/`，不提交到源码仓库。
+`package-server.ps1` 使用 `-NasOfflineBundle` 指向已校验的 AMD64 离线包，使用 `-NasArm64OfflineBundle` 指向 ARM64 离线包。两者分目录收录；未提供某架构镜像时，启动器对此架构明确显示源码部署。大体积发行文件保存在 `release/`，不提交到源码仓库。
 
 ## NAS 构建
 
 源码部署使用根目录 `Dockerfile` 与 `docker-compose.yml`。通用 NAS 部署包由 `scripts/package-nas.ps1` 生成。离线镜像按 [使用说明](usage.md) 和 [离线模板说明](../deployment/nas-offline/README.md) 构建、验收和打包。
+
+`scripts/package-nas.ps1 -Architecture arm64` 生成指定平台的 ARM64 源码包。实际离线镜像可运行 `sh scripts/build-nas-image.sh <输出目录> arm64`，或触发 `nas-offline.yml`；详见 [NAS 架构与 Windows 导出](nas-architectures.md)。两种架构均已有真实容器验收的离线镜像；ARM64 于 2026-11-27 在 GitHub 原生 ARM64 执行机制作。
 
 ## 源码导出
 

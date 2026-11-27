@@ -1,4 +1,4 @@
-﻿param([string]$DestinationRoot, [string]$LauncherPath, [string]$NasOfflineBundle)
+﻿param([string]$DestinationRoot, [string]$LauncherPath, [string]$NasOfflineBundle, [string]$NasArm64OfflineBundle)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $version = (Get-Content -LiteralPath (Join-Path $projectRoot 'package.json') -Raw | ConvertFrom-Json).version
@@ -19,12 +19,15 @@ $nodePath = (Get-Command node.exe -ErrorAction Stop).Source
 $nodeVersion = (& $nodePath -p 'process.versions.node').Trim()
 if ([int]$nodeVersion.Split('.')[0] -lt 22) { throw 'Node.js 22 or later is required.' }
 if (!(Test-Path -LiteralPath (Join-Path $projectRoot 'node_modules/express/package.json'))) { throw 'Run npm ci before packaging.' }
-if ($NasOfflineBundle) {
-  $NasOfflineBundle = (Resolve-Path -LiteralPath $NasOfflineBundle).Path
-  $checked = & $nodePath (Join-Path $PSScriptRoot 'verify-nas-offline.mjs') $NasOfflineBundle
+$offlineBundles = @()
+foreach ($candidate in @(@{Architecture='amd64'; Path=$NasOfflineBundle}, @{Architecture='arm64'; Path=$NasArm64OfflineBundle})) {
+  if (!$candidate.Path) { continue }
+  $verifiedPath = (Resolve-Path -LiteralPath $candidate.Path).Path
+  $checked = & $nodePath (Join-Path $PSScriptRoot 'verify-nas-offline.mjs') $verifiedPath --platform "linux/$($candidate.Architecture)"
   if ($LASTEXITCODE -ne 0) { throw 'NAS offline bundle verification failed.' }
   $offlineReport = $checked | ConvertFrom-Json
-  if ($offlineReport.ok -ne $true) { throw 'NAS offline bundle verification failed.' }
+  if ($offlineReport.ok -ne $true -or $offlineReport.image.platform -cne "linux/$($candidate.Architecture)") { throw 'NAS offline bundle architecture verification failed.' }
+  $offlineBundles += [pscustomobject]@{ Architecture=$candidate.Architecture; Path=$verifiedPath; Report=$offlineReport }
 }
 New-Item -ItemType Directory -Path $bundleRoot | Out-Null
 foreach ($item in @('server','public','config','node_modules','package.json','package-lock.json','start-windows.cmd','AUTHORS.md','THIRD-PARTY.md')) {
@@ -32,6 +35,7 @@ foreach ($item in @('server','public','config','node_modules','package.json','pa
 }
 # The repository landing page links to source-only docs. Ship the full user guide instead.
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/usage.md') -Destination (Join-Path $bundleRoot 'README.md')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/nas-architectures.md') -Destination $bundleRoot
 $launcherRoot = Join-Path $bundleRoot 'launcher'
 New-Item -ItemType Directory -Path $launcherRoot | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot 'launcher/host.mjs') -Destination $launcherRoot
@@ -46,11 +50,11 @@ foreach ($item in @('Dockerfile','docker-compose.yml','.dockerignore','.env.exam
 $verifierRoot = Join-Path $bundleRoot 'scripts'
 New-Item -ItemType Directory -Path $verifierRoot | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'verify-nas-offline.mjs') -Destination $verifierRoot
-if ($NasOfflineBundle) {
-  $offlineRoot = Join-Path $bundleRoot 'deployment/nas-offline'
+foreach ($offline in $offlineBundles) {
+  $offlineRoot = Join-Path $bundleRoot "deployment/nas-offline/$($offline.Architecture)"
   New-Item -ItemType Directory -Path $offlineRoot | Out-Null
-  foreach ($item in $offlineReport.files) {
-    Copy-Item -LiteralPath (Join-Path $NasOfflineBundle $item) -Destination $offlineRoot
+  foreach ($item in $offline.Report.files) {
+    Copy-Item -LiteralPath (Join-Path $offline.Path $item) -Destination $offlineRoot
   }
 }
 $runtimeRoot = Join-Path $bundleRoot 'runtime'
@@ -59,11 +63,12 @@ Copy-Item -LiteralPath $nodePath -Destination (Join-Path $runtimeRoot 'node.exe'
 $license = Join-Path (Split-Path $nodePath -Parent) 'LICENSE'
 if (!(Test-Path -LiteralPath $license)) { $license = Join-Path $projectRoot 'config/NODE-LICENSE.txt' }
 Copy-Item -LiteralPath $license -Destination (Join-Path $runtimeRoot 'LICENSE')
-$nasReadme = if ($NasOfflineBundle) {
-  'NAS：本包内置 Linux AMD64 离线镜像。切换“NAS 部署”，填写地址、端口和管理密码，点击“校验并导出离线包”。将导出包传到 NAS，导入 image.tar 后使用 docker-compose.yml 启动，无需重新构建。已有安装须保留原项目、配置和实际数据卷。'
-} else {
-  'NAS：切换“NAS 部署”导出源码部署包。NAS 仍需联网下载基础镜像和依赖、现场构建。'
-}
+$included = if ($offlineBundles.Count) { ($offlineBundles | ForEach-Object { "linux/$($_.Architecture)" }) -join '、' } else { '无' }
+$nasReadme = @"
+NAS：切换“NAS 部署”，选择 x86-64 / AMD64 或 ARM64，再填写地址、端口和管理密码。
+本包内置的离线镜像：$included。选择已内置镜像的架构时，校验并导出离线包；没有该架构镜像时明确导出源码部署包，需要 NAS 联网构建。
+离线包在 NAS 导入 image.tar 后使用 docker-compose.yml 启动；已有安装须保留原项目、配置和实际数据卷。ARM64 不等于 32 位 ARM，不支持 ARMv7。
+"@
 $readme = @'
 映间服务端 · Windows
 

@@ -8,6 +8,12 @@ SCRIPT_DIR=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
 cd "$SCRIPT_DIR"
 ENV_FILE="$SCRIPT_DIR/.env"
 COMPOSE_FILE_PATH="$SCRIPT_DIR/docker-compose.yml"
+TARGET_PLATFORM=
+if [ -e "$SCRIPT_DIR/target-platform.txt" ]; then
+  [ -f "$SCRIPT_DIR/target-platform.txt" ] && [ ! -L "$SCRIPT_DIR/target-platform.txt" ] || fail "Invalid target-platform.txt."
+  TARGET_PLATFORM=$(cat "$SCRIPT_DIR/target-platform.txt")
+  case "$TARGET_PLATFORM" in linux/amd64|linux/arm64) ;; *) fail "Unsupported target platform; choose AMD64 or ARM64." ;; esac
+fi
 ACTION=${1:-start}
 case "$ACTION" in
   start|stop|update|status|validate) ;;
@@ -127,6 +133,16 @@ fi
 
 command -v docker >/dev/null 2>&1 || fail "Install and start Docker / Container Manager on the NAS first."
 docker info >/dev/null 2>&1 || fail "Docker is unavailable. Check that its service is running and your NAS account has access."
+if [ -n "$TARGET_PLATFORM" ]; then
+  host_platform=$(docker info --format '{{.OSType}}/{{.Architecture}}')
+  case "$host_platform" in
+    linux/amd64|linux/x86_64) host_platform=linux/amd64 ;;
+    linux/arm64|linux/aarch64) host_platform=linux/arm64 ;;
+    *) fail "Unsupported NAS platform: $host_platform. This bundle requires $TARGET_PLATFORM." ;;
+  esac
+  [ "$host_platform" = "$TARGET_PLATFORM" ] || fail "Wrong deployment package: this NAS is $host_platform, but the bundle is $TARGET_PLATFORM. No container was changed."
+  grep -Eq "^[[:space:]]+platform: $TARGET_PLATFORM[[:space:]]*$" "$COMPOSE_FILE_PATH" || fail "Compose platform does not match target-platform.txt."
+fi
 if docker compose version >/dev/null 2>&1; then
   COMPOSE_KIND=v2
 elif command -v docker-compose >/dev/null 2>&1 && docker-compose version >/dev/null 2>&1; then

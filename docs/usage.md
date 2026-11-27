@@ -43,9 +43,11 @@
 
 ## NAS / Docker
 
-推荐使用 **`Yingjian-Server-0.1.4-nas1-linux-amd64-Offline.zip`**，适用于运行 Docker 的 x86-64（AMD64）NAS。包中包含已构建的 `yingjian-server:0.1.4-nas1` 镜像、校验摘要、容器验收记录和 Compose。安装时不需要下载 Node.js、npm 依赖或重新构建镜像；播放互联网片源仍需联网。
+Windows 启动器的 NAS 部署页可选择 **AMD64 / x86-64** 或 **ARM64 / aarch64**。新版完整包内置两种架构的已验收离线镜像，均可直接导出到 NAS 安装。ARM64 适用于 64 位 ARM，不适用于 ARMv7。完整操作与后续制作流程见 [NAS 架构与导出](nas-architectures.md)。
 
-当前完整 Windows 服务端包也内置该镜像。打开启动器的“NAS 部署”，填写 NAS 的局域网 IPv4、未被占用的访问端口和管理密码，点击“校验并导出离线包”，即可得到带配置的文件夹及 ZIP。导出前会重新检查镜像及验收记录。启动器负责准备部署包，随后需要将它传到家里电脑或 NAS。
+独立安装时，AMD64 NAS 使用 **`Yingjian-Server-0.1.4-nas1-linux-amd64-Offline.zip`**，ARM64 NAS 使用 **`Yingjian-Server-0.1.4-nas1-linux-arm64-Offline.zip`**。镜像分别为 `yingjian-server:0.1.4-nas1` 和 `yingjian-server:0.1.4-nas1-arm64`，包含校验摘要、容器验收记录和 Compose。安装时不需要下载 Node.js、npm 依赖或重新构建镜像；播放互联网片源仍需联网。
+
+打开新版完整 Windows 服务端包的“NAS 部署”，选择匹配 NAS 的架构，填写 NAS 的局域网 IPv4、未被占用的访问端口和管理密码。两种架构均显示“校验并导出离线包”，导出前检查镜像、目标架构及验收记录。若使用自行打包且缺少相应镜像的版本，启动器会明确显示“源码部署”，需要联网构建。启动器负责准备部署包，随后需要将它传到家里电脑或 NAS。
 
 首次安装：
 
@@ -64,7 +66,7 @@ sh deploy.sh start
 
 已有安装应在原项目中更新，保留原 `.env`、项目名和实际数据卷名称，不另建同名容器。导入镜像后，用离线版 Compose 更新原项目的编排内容，再重新创建容器；只重启旧容器不会应用新镜像。`sh deploy.sh update` 会检查已有容器并沿用原数据卷。`sh deploy.sh status` 检查状态，`sh deploy.sh stop` 停止服务。不要执行 `docker compose down -v`，它会删除数据卷。
 
-该镜像于 2026-11-16 在用户 NAS 的独立测试容器中通过非 root 运行、健康检查、管理登录、静态资源、设备配对和重建后的持久化验收。收到成品后，已在本地核对镜像身份、文件哈希、各镜像层和应用源码一致性。当前电脑没有 Docker 引擎，未在本机重复运行容器；验收也没有替换 NAS 上的原服务。
+AMD64 镜像于 2026-11-16 在用户 NAS 的独立测试容器通过验收，ARM64 镜像于 2026-11-27 在 GitHub 原生 ARM64 执行机通过验收，均覆盖非 root 运行、健康检查、管理登录、静态资源、设备配对和重建后的持久化。成品还在本地核对镜像身份、文件哈希及应用源码。当前 Windows 电脑没有 Docker 引擎，未在本机重复运行容器；这些验收没有替换 NAS 上的原服务。
 
 维护者需要更新镜像时，可在有 Docker 的 Linux AMD64 机器运行 `sh scripts/build-nas-image.sh`，或使用 Windows 镜像制作工具；构建和验收通过后，再用 `scripts/package-nas-offline.ps1 -VerifiedBundle <完整目录>` 打包。源码中的 `deployment/nas-offline` 仅保存模板，不包含大体积镜像。`Yingjian-Server-0.1.4-NAS.zip` 是保留的旧源码部署包，需要联网构建；新安装请使用名称带 `Offline` 的成品包。
 

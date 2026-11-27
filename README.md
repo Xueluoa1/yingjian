@@ -8,6 +8,20 @@
 
 基于 LibreTV 的聚合观影思路打造；当前服务端、界面和客户端为独立实现，未包含 LibreTV 源码，非 LibreTV 官方版本。来源与依赖说明见 [THIRD-PARTY.md](THIRD-PARTY.md)。
 
+## 下载与安装
+
+前往 [最新版下载](https://github.com/Xueluoa1/yingjian/releases/latest)。当前部署更新为 **v0.1.4-nas2**，Windows 完整服务端内置 AMD64 和 ARM64 两种 NAS 镜像，可在“NAS 部署”中选择架构后离线导出。
+
+| 设备 / 用途 | 下载文件 |
+| --- | --- |
+| Windows 服务端及 NAS 导出 | `Yingjian-Server-0.1.4-Windows.zip` |
+| ARM64 / aarch64 NAS | `Yingjian-Server-0.1.4-nas1-linux-arm64-Offline.zip` |
+| Intel / AMD x86-64 NAS | `Yingjian-Server-0.1.4-nas1-linux-amd64-Offline.zip` |
+| Windows 播放端 | `Yingjian-Player-0.1.4-Windows.zip` |
+| 安卓手机 / 电视 | 对应的 `Yingjian-Phone` / `Yingjian-TV` APK |
+
+Windows 解压后运行 `Yingjian-Server.exe`。NAS 离线包先导入 `image.tar`，再使用随包 Compose 和配置启动，无需联网构建。ARM64 不包含 ARMv7 支持。升级保留原配置及数据卷，详见 [使用说明](docs/usage.md) 和 [NAS 架构选择](docs/nas-architectures.md)。
+
 ## 界面预览
 
 ![映间服务端总览](docs/images/server.jpg)
@@ -25,7 +39,7 @@
 - **点播与直播**：支持苹果 CMS 兼容 JSON 接口、M3U 直播列表；详情、线路、选集和续播。
 - **播放设置**：管理片源、测试接口延迟、选择浏览源、自动播放下一集；播放中匹配同一作品换源。
 - **多端连接**：浏览器、Android 手机、Android TV；二维码、链接或六位连接码配对。
-- **Windows / NAS**：Windows 桌面启动器；支持 Docker 的 NAS 可使用源码构建或 AMD64 离线镜像包。
+- **Windows / NAS**：Windows 桌面启动器可选择 AMD64 / ARM64，校验并导出对应的 NAS 离线镜像包。
 
 局域网指设备访问自家服务端，互联网片源仍需联网。项目不内置影片、离线下载、转码、DLNA 投屏或外网穿透。筛选范围限于已加载内容，媒体格式取决于浏览器或 Android WebView。请使用有权访问的内容来源。
 
@@ -50,6 +64,7 @@ npm start
 | Windows / macOS / Linux | Node.js 源码运行 | `npm ci` 后 `npm start`，浏览器访问管理页 |
 | NAS / Linux Docker | 源码构建 | 根目录 Compose 负责构建并保存持久化数据 |
 | NAS x86-64 / AMD64 | 离线镜像包 | 导入已构建镜像，再使用随包 Compose；源码仓库不包含镜像 |
+| NAS ARM64 / aarch64 | 离线镜像包 | 已通过原生 ARM64 容器验收；导入镜像后启动 Compose，不支持 ARMv7 |
 | Android 手机 / 电视 | 对应 APK | Android 6.0+，需要可用的 WebView；当前为侧载调试签名版本 |
 
 ### Docker 从源码部署
@@ -92,6 +107,7 @@ npm run test:deployment
 GitHub Actions 配置了 Windows / Ubuntu、Node.js 22 / 24 的检查矩阵。部署测试使用模拟 Docker，不能代替真实容器、NAS 或物理 Android 设备验收。
 
 - [详细使用与维护](docs/usage.md)
+- [NAS 架构选择与 ARM64 镜像制作](docs/nas-architectures.md)
 - [开发与构建说明](docs/development.md)
 - [GitHub 上传说明](docs/github-upload.md)
 - [Android 构建与兼容性记录](android/README.md)
@@ -103,5 +119,3 @@ GitHub Actions 配置了 Windows / Ubuntu、Node.js 22 / 24 的检查矩阵。�
 作者：**雪落a**，见 [AUTHORS.md](AUTHORS.md)。
 
 项目许可证暂未选定，本仓库尚未添加项目级开源许可证。第三方组件仍遵循各自许可证，见 [THIRD-PARTY.md](THIRD-PARTY.md) 和 [Android 第三方声明](android/THIRD-PARTY.md)。
-
-原有介绍与旁白见 [项目介绍](docs/intro.md)。
