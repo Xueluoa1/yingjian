@@ -1,4 +1,4 @@
-﻿param([string]$NasAddress = '192.168.1.8', [string]$NasUser = '2402108902')
+﻿param([string]$NasAddress, [string]$NasUser, [ValidateSet('amd64','arm64')][string]$Architecture)
 $ErrorActionPreference = 'Stop'
 $kitRoot = Split-Path $PSScriptRoot -Parent
 $inputArchive = Join-Path $kitRoot 'build-input.tgz'
@@ -6,6 +6,12 @@ $nodePath = Join-Path $kitRoot 'runtime/node.exe'
 if (!(Test-Path -LiteralPath $inputArchive) -or !(Test-Path -LiteralPath $nodePath)) {
   throw '请从完整的 NAS 镜像制作工具包中启动。'
 }
+if (!$Architecture) {
+  $choice = Read-Host '选择镜像架构：1 = x86-64 / AMD64，2 = ARM64'
+  $Architecture = switch ($choice) { '1' { 'amd64' }; '2' { 'arm64' }; default { throw '未选择有效架构，未连接 NAS。' } }
+}
+if (!$NasAddress) { $NasAddress = Read-Host '输入制作机器的局域网 IPv4 地址' }
+if (!$NasUser) { $NasUser = Read-Host '输入该机器的 SSH 用户名' }
 $address = $null
 if (![Net.IPAddress]::TryParse($NasAddress, [ref]$address) -or $address.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork -or $address.ToString() -ne $NasAddress) {
   throw 'NAS 地址必须是局域网 IPv4。'
@@ -29,10 +35,11 @@ try {
 $runId = 'yingjian-image-' + (Get-Date -Format yyyyMMdd-HHmmss) + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
 $remoteRoot = "/tmp/$runId"
 $remoteArchive = "/tmp/$runId.tgz"
-$bundleName = 'Yingjian-Server-0.1.4-nas1-linux-amd64-Offline'
+$bundleName = "Yingjian-Server-0.1.4-nas1-linux-$Architecture-Offline"
 $outputRoot = Join-Path $kitRoot "output/$runId"
 New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 Write-Host "目标 NAS：$connection"
+Write-Host "目标镜像架构：linux/$Architecture"
 Write-Host '这次只制作并测试镜像，不替换正在运行的映间服务，也不读取家庭数据。'
 Write-Host 'SSH 可能多次要求输入 NAS 登录密码；密码由系统 SSH 接收，不保存在工具包。'
 Write-Host '[1/3] 上传制作材料……'
@@ -41,14 +48,14 @@ if ($LASTEXITCODE -ne 0) { throw '上传失败。请确认 NAS 已开启 SSH，�
 Write-Host '[2/3] 构建、启动验收并导出完整镜像……'
 # Every interpolated remote path is derived only from this fixed prefix and GUID.
 # Existing NAS application paths, configuration and volumes never enter this command.
-$remoteCommand = "set -eu; umask 077; mkdir '$remoteRoot'; tar -xzf '$remoteArchive' -C '$remoteRoot'; cd '$remoteRoot'; sh scripts/build-nas-image.sh '$remoteRoot/output'"
+$remoteCommand = "set -eu; umask 077; mkdir '$remoteRoot'; tar -xzf '$remoteArchive' -C '$remoteRoot'; cd '$remoteRoot'; sh scripts/build-nas-image.sh '$remoteRoot/output' '$Architecture'"
 & $ssh -o StrictHostKeyChecking=ask -o ConnectTimeout=10 $connection $remoteCommand
 if ($LASTEXITCODE -ne 0) { throw "镜像制作或真实容器验收失败，没有生成安装成品。诊断材料保留在 NAS 的 $remoteRoot。" }
 Write-Host '[3/3] 取回已验证镜像并生成离线 ZIP……'
 & $scp -o StrictHostKeyChecking=ask -o ConnectTimeout=10 -r "${connection}:$remoteRoot/output/$bundleName" $outputRoot
 if ($LASTEXITCODE -ne 0) { throw "镜像取回失败。已制作的文件仍保留在 NAS 的 $remoteRoot/output，可稍后重新下载。" }
 $bundle = Join-Path $outputRoot $bundleName
-$validation = & $nodePath (Join-Path $PSScriptRoot 'verify-nas-offline.mjs') $bundle
+$validation = & $nodePath (Join-Path $PSScriptRoot 'verify-nas-offline.mjs') $bundle --platform "linux/$Architecture"
 if ($LASTEXITCODE -ne 0) { throw '下载后的镜像校验失败，停止发布。NAS 原服务未修改。' }
 $report = $validation | ConvertFrom-Json
 if ($report.ok -ne $true) { throw '离线镜像校验未返回成功结果。' }

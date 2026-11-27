@@ -6,7 +6,7 @@ if (!$ReleaseRoot) { $ReleaseRoot = Join-Path $projectRoot 'release' }
 # Windows PowerShell 5.1 does not resolve all ZIP types from FileSystem alone.
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$offlineName = 'Yingjian-Server-0.1.4-nas1-linux-amd64-Offline'
+$offlineNames = @{ amd64='Yingjian-Server-0.1.4-nas1-linux-amd64-Offline'; arm64='Yingjian-Server-0.1.4-nas1-linux-arm64-Offline' }
 $offlineFiles = @('image.tar','image-metadata.txt','image.tar.sha256','verification.json','docker-compose.yml','.env.example','deploy.sh','README.md','THIRD-PARTY.md','manifest.json')
 
 function Read-ZipText($Entry) {
@@ -26,7 +26,9 @@ function Get-ZipEntryHash($Entry) {
   finally { $sha.Dispose(); $stream.Dispose() }
 }
 
-function Test-OfflineBundle($Entries, [string]$Prefix, [string]$Label) {
+function Test-OfflineBundle($Entries, [string]$Prefix, [string]$Label, [ValidateSet('amd64','arm64')][string]$Architecture) {
+  $platform = "linux/$Architecture"
+  $imageTag = if ($Architecture -ceq 'arm64') { 'yingjian-server:0.1.4-nas1-arm64' } else { 'yingjian-server:0.1.4-nas1' }
   $bundleEntries = @{}
   foreach ($path in $Entries.Keys) {
     if ($path.StartsWith($Prefix, [StringComparison]::Ordinal)) {
@@ -56,8 +58,8 @@ function Test-OfflineBundle($Entries, [string]$Prefix, [string]$Label) {
     throw "$Label has an invalid or inconsistent verification timestamp."
   }
   foreach ($image in @($manifest.image, $verification.image)) {
-    if (!$image -or $image.tag -cne 'yingjian-server:0.1.4-nas1' -or
-        $image.platform -cne 'linux/amd64' -or $image.id -cnotmatch '^sha256:[a-f0-9]{64}$') {
+    if (!$image -or $image.tag -cne $imageTag -or
+        $image.platform -cne $platform -or $image.id -cnotmatch '^sha256:[a-f0-9]{64}$') {
       throw "$Label has an invalid verified image identity."
     }
   }
@@ -86,7 +88,7 @@ function Test-OfflineBundle($Entries, [string]$Prefix, [string]$Label) {
     throw "$Label image archive differs from the verified export."
   }
   $metadata = Read-ZipText $bundleEntries['image-metadata.txt']
-  if ($metadata -cne "IMAGE_ID=$($verification.image.id)`nIMAGE_PLATFORM=linux/amd64`n") {
+  if ($metadata -cne "IMAGE_ID=$($verification.image.id)`nIMAGE_PLATFORM=$platform`n") {
     throw "$Label image metadata differs from the verified image."
   }
   $checksum = Read-ZipText $bundleEntries['image.tar.sha256']
@@ -96,9 +98,15 @@ function Test-OfflineBundle($Entries, [string]$Prefix, [string]$Label) {
     if ($text.Contains("`r") -or $text.StartsWith([string][char]0xFEFF, [StringComparison]::Ordinal)) { throw "$Label $name must use UTF-8 without BOM and LF." }
   }
   $compose = Read-ZipText $bundleEntries['docker-compose.yml']
-  if ($compose -cnotmatch '(?m)^\s+image: yingjian-server:0\.1\.4-nas1\s*$' -or
+  $imagePattern = '(?m)^\s+image: ' + [regex]::Escape($imageTag) + '\s*$'
+  if ($compose -cnotmatch $imagePattern -or
       $compose -cnotmatch '(?m)^\s+pull_policy: never\s*$' -or $compose -match '(?m)^\s+build:') {
     throw "$Label Compose must run only the included image without build or pull."
+  }
+  $platformLines = @($compose -split "`n" | Where-Object { $_ -match '^\s+platform:' })
+  if (($Architecture -ceq 'arm64' -and $platformLines.Count -ne 1) -or
+      ($platformLines.Count -gt 0 -and ($platformLines.Count -ne 1 -or $platformLines[0].Trim() -cne "platform: $platform"))) {
+    throw "$Label Compose platform does not match the requested image architecture."
   }
   $environment = Read-ZipText $bundleEntries['.env.example']
   $passwordLines = @($environment -split "`n" | Where-Object { $_ -match '^\s*ADMIN_PASSWORD\s*=' })
@@ -107,7 +115,7 @@ function Test-OfflineBundle($Entries, [string]$Prefix, [string]$Label) {
   }
   # The full TAR identity check is performed by verify-nas-offline.mjs before
   # packaging. Here we stream ZIP entry bytes and bind them to that exact report.
-  return [pscustomobject]@{ Image=$verification.image; VerifiedAt=$verification.verifiedAt; ImageSHA256=$hashes['image.tar']; Checked=$true }
+  return [pscustomobject]@{ Architecture=$Architecture; Image=$verification.image; VerifiedAt=$verification.verifiedAt; ImageSHA256=$hashes['image.tar']; Checked=$true }
 }
 
 $specs = @(
@@ -116,8 +124,15 @@ $specs = @(
   @{ Name="Yingjian-Player-$version-Windows"; Required=@('映间播放器.html','README.md') },
   @{ Name="Yingjian-LAN-$version-Source"; Source=$true; Required=@('launcher/host.mjs','launcher/windows/Launcher.cs','launcher/windows/Launcher.xaml','launcher/windows/app.manifest','deployment/nas/.env.example','scripts/package-server.ps1','server/runtime.js','tests/runtime.test.js','android/app/build.gradle','.gitignore') }
 )
-if (Test-Path -LiteralPath (Join-Path $ReleaseRoot "$offlineName.zip")) {
-  $specs += @{ Name=$offlineName; Offline=$true; Required=$offlineFiles }
+foreach ($architecture in @('amd64','arm64')) {
+  $offlineName = $offlineNames[$architecture]
+  if (Test-Path -LiteralPath (Join-Path $ReleaseRoot "$offlineName.zip")) {
+    $specs += @{ Name=$offlineName; Offline=$true; Architecture=$architecture; Required=$offlineFiles }
+  }
+  $sourceName = "Yingjian-Server-$version-NAS-$architecture-Source"
+  if (Test-Path -LiteralPath (Join-Path $ReleaseRoot "$sourceName.zip")) {
+    $specs += @{ Name=$sourceName; Source=$true; Architecture=$architecture; Required=@('Dockerfile','docker-compose.yml','.dockerignore','.env.example','deploy.sh','target-platform.txt','server/runtime.js','server/index.js','package-lock.json','README.md','THIRD-PARTY.md') }
+  }
 }
 $reports = @()
 foreach ($spec in $specs) {
@@ -147,10 +162,32 @@ foreach ($spec in $specs) {
       throw "$($spec.Name) source bundle must not include an image TAR."
     }
     $offlineReport = $null
-    if ($spec.Offline) { $offlineReport = Test-OfflineBundle $entryMap '' $spec.Name }
-    elseif ($entryMap.ContainsKey('deployment/nas-offline/image.tar')) {
+    $offlineReports = @()
+    if ($spec.Offline) { $offlineReport = Test-OfflineBundle $entryMap '' $spec.Name $spec.Architecture; $offlineReports += $offlineReport }
+    elseif (@($entries | Where-Object { $_.StartsWith('deployment/nas-offline/', [StringComparison]::Ordinal) }).Count) {
       if (!$entryMap.ContainsKey('scripts/verify-nas-offline.mjs')) { throw "$($spec.Name) missing scripts/verify-nas-offline.mjs" }
-      $offlineReport = Test-OfflineBundle $entryMap 'deployment/nas-offline/' $spec.Name
+      if ($entryMap.ContainsKey('deployment/nas-offline/image.tar')) {
+        $offlineReport = Test-OfflineBundle $entryMap 'deployment/nas-offline/' $spec.Name 'amd64'
+        $offlineReports += $offlineReport
+      } elseif (!$spec.Source) {
+        foreach ($path in $entries | Where-Object { $_.StartsWith('deployment/nas-offline/', [StringComparison]::Ordinal) }) {
+          if ($path -cnotmatch '^deployment/nas-offline/(amd64|arm64)/') { throw "$($spec.Name) contains an unsupported offline image directory: $path" }
+        }
+        foreach ($architecture in @('amd64','arm64')) {
+          $offlinePrefix = "deployment/nas-offline/$architecture/"
+          if (@($entries | Where-Object { $_.StartsWith($offlinePrefix, [StringComparison]::Ordinal) }).Count) {
+            $archReport = Test-OfflineBundle $entryMap $offlinePrefix $spec.Name $architecture
+            $offlineReports += $archReport
+            if ($architecture -ceq 'amd64') { $offlineReport = $archReport }
+          }
+        }
+      }
+    }
+    if ($spec.Source -and $spec.Architecture) {
+      $platform = "linux/$($spec.Architecture)"
+      if ((Read-ZipText $entryMap['target-platform.txt']).Trim() -cne $platform) { throw "$($spec.Name) has the wrong source deployment target." }
+      $compose = Read-ZipText $entryMap['docker-compose.yml']
+      if ($compose -cnotmatch ('(?m)^\s+platform: ' + [regex]::Escape($platform) + '\s*$')) { throw "$($spec.Name) Compose does not select its declared platform." }
     }
     $packageEntry = $entryMap['package.json']
     if ($packageEntry) {
@@ -164,15 +201,19 @@ foreach ($spec in $specs) {
     }
     $report = [ordered]@{ Name=$spec.Name; Entries=$entries.Count; Bytes=(Get-Item -LiteralPath $archive).Length; SHA256=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant(); Checked=$true }
     if ($offlineReport) { $report.OfflineBundle = $offlineReport }
+    if ($offlineReports.Count) { $report.OfflineBundles = $offlineReports }
     $reports += [pscustomobject]$report
   } finally { $zip.Dispose() }
 }
-$standaloneOffline = $reports | Where-Object { $_.Name -ceq $offlineName }
 $windowsServer = $reports | Where-Object { $_.Name -ceq "Yingjian-Server-$version-Windows" }
-if ($standaloneOffline -and $windowsServer.OfflineBundle -and
-    ($standaloneOffline.OfflineBundle.ImageSHA256 -cne $windowsServer.OfflineBundle.ImageSHA256 -or
-     $standaloneOffline.OfflineBundle.Image.id -cne $windowsServer.OfflineBundle.Image.id)) {
-  throw 'The Windows server and standalone offline release include different NAS images.'
+foreach ($architecture in @('amd64','arm64')) {
+  $standaloneOffline = $reports | Where-Object { $_.Name -ceq $offlineNames[$architecture] }
+  $embedded = @($windowsServer.OfflineBundles | Where-Object { $_.Architecture -ceq $architecture })
+  if ($standaloneOffline -and $embedded.Count -gt 0 -and
+      ($standaloneOffline.OfflineBundle.ImageSHA256 -cne $embedded[0].ImageSHA256 -or
+       $standaloneOffline.OfflineBundle.Image.id -cne $embedded[0].Image.id)) {
+    throw "The Windows server and standalone $architecture release include different NAS images."
+  }
 }
 $reportPath = Join-Path $ReleaseRoot "package-validation-$version.json"
 [IO.File]::WriteAllText($reportPath, ($reports | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))

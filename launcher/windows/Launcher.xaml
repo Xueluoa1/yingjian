@@ -124,6 +124,14 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Border Background="White" CornerRadius="24" Padding="28,25" VerticalAlignment="Top">
           <StackPanel>
+            <Grid Margin="0,0,0,16">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Text="NAS 架构" VerticalAlignment="Center" Margin="0,0,16,0"/>
+              <ComboBox x:Name="NasArchitecture" Grid.Column="1" SelectedIndex="0" Padding="10,8" FontSize="13" Background="#F1F4F6" BorderThickness="0" AutomationProperties.Name="NAS 处理器架构">
+                <ComboBoxItem Tag="amd64" Content="AMD64 / x86-64 · Intel、AMD"/>
+                <ComboBoxItem Tag="arm64" Content="ARM64 / aarch64 · 64 位 ARM"/>
+              </ComboBox>
+            </Grid>
             <TextBlock x:Name="NasMode" Text="源码部署 · 需要联网构建" FontSize="21" FontWeight="SemiBold"/>
             <TextBlock x:Name="NasHelp" Text="当前包未附带完整镜像。NAS 需要下载 Node 镜像和依赖，再构建服务；具备离线镜像的发行版会显示离线导出。" Foreground="#8793A0" Margin="0,9,0,22" LineHeight="21"/>
             <Grid>

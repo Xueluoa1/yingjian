@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $kitRoot = Split-Path $PSScriptRoot -Parent
 $nodePath = Join-Path $kitRoot 'runtime/node.exe'
 $packageScript = Join-Path $PSScriptRoot 'package-nas-offline.ps1'
-$bundleName = 'Yingjian-Server-0.1.4-nas1-linux-amd64-Offline'
+$bundleNames = @('Yingjian-Server-0.1.4-nas1-linux-amd64-Offline', 'Yingjian-Server-0.1.4-nas1-linux-arm64-Offline')
 foreach ($file in @($nodePath, $packageScript, (Join-Path $PSScriptRoot 'verify-nas-offline.mjs'))) {
   if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw '工具文件不完整。请将修复补丁解压到原来的镜像制作工具目录，保留原 runtime、scripts 和 output。' }
 }
@@ -16,21 +16,23 @@ if (!$VerifiedBundle) {
         Where-Object { !($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } |
         Sort-Object Name -Descending |
         ForEach-Object {
-          $candidate = Join-Path $_.FullName $bundleName
-          if ((Test-Path -LiteralPath (Join-Path $candidate 'image.tar') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $candidate 'verification.json') -PathType Leaf)) {
-            $candidate
+          foreach ($name in $bundleNames) {
+            $candidate = Join-Path $_.FullName $name
+            if ((Test-Path -LiteralPath (Join-Path $candidate 'image.tar') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $candidate 'verification.json') -PathType Leaf)) {
+              $candidate
+            }
           }
         }
     )
   }
-  if ($candidates.Count -eq 0) { throw '没有找到已下载的镜像。请将补丁解压到原制作工具目录，里面应有 output\yingjian-image-日期-编号\Yingjian-Server-0.1.4-nas1-linux-amd64-Offline\image.tar。' }
+  if ($candidates.Count -eq 0) { throw '没有找到已下载的镜像。output 的制作目录中应有 linux-amd64-Offline 或 linux-arm64-Offline 成品文件夹及 image.tar。' }
   if ($candidates.Count -eq 1) {
     $VerifiedBundle = $candidates[0]
   } else {
     Write-Host '发现多次制作的镜像，请选择本次需要打包的一份：'
     for ($index = 0; $index -lt $candidates.Count; $index++) {
       $runName = Split-Path (Split-Path $candidates[$index] -Parent) -Leaf
-      Write-Host ("  {0}. {1}" -f ($index + 1), $runName)
+      Write-Host ("  {0}. {1} / {2}" -f ($index + 1), $runName, (Split-Path $candidates[$index] -Leaf))
     }
     $answer = Read-Host '输入编号（直接回车取消）'
     $selected = 0
@@ -39,6 +41,12 @@ if (!$VerifiedBundle) {
   }
 }
 $bundle = (Resolve-Path -LiteralPath $VerifiedBundle).Path
+$validation = & $nodePath (Join-Path $PSScriptRoot 'verify-nas-offline.mjs') $bundle
+if ($LASTEXITCODE -ne 0) { throw '已下载镜像未通过完整性校验，文件保持原样。' }
+$report = $validation | ConvertFrom-Json
+if ($report.ok -ne $true) { throw '镜像验证没有返回成功结果。' }
+$architecture = switch -CaseSensitive ($report.image.platform) { 'linux/amd64' { 'amd64' }; 'linux/arm64' { 'arm64' }; default { throw 'Unsupported image architecture.' } }
+$bundleName = "Yingjian-Server-0.1.4-nas1-linux-$architecture-Offline"
 $outputRoot = Split-Path $bundle -Parent
 $archive = Join-Path $outputRoot "$bundleName.zip"
 # Preserve any previous completed ZIP or interrupted output.

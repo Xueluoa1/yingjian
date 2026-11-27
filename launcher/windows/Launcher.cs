@@ -69,6 +69,8 @@ namespace Yingjian.ServerLauncher {
           check(Directory.GetFileSystemEntries(directory).Length == beforeCount, "no export output in " + folder);
         }
         rejects(() => LauncherCore.StartHost(18090, Path.Combine(Root, "public"), line => { }).GetAwaiter().GetResult(), "reject unsafe host before start");
+        check(LauncherCore.ValidateArchitecture("amd64") == "amd64" && LauncherCore.ValidateArchitecture("arm64") == "arm64", "supported NAS architectures");
+        rejects(() => LauncherCore.ExportNas(Root, "192.168.1.20", 8080, "test-only-password", "test-volume", "armv7"), "reject unsupported architecture before write");
         check(LauncherCore.ValidateExportParent(Root) == LauncherCore.NormalizeDirectory(Root), "root export allowed");
         var xaml = ReadXaml(); check(xaml.Contains("映间服务端") && !xaml.Contains("播放影片"), "server UI");
         // Parse resources and named controls without showing a window or starting the service.
@@ -77,6 +79,13 @@ namespace Yingjian.ServerLauncher {
         view.Close();
         var shell = new MainWindow(true);
         check(shell.FindName("ChangeDataButton") != null && shell.Content != null, "window initialization");
+        shell.ShowTab(true);
+        foreach (string architecture in new[] { "amd64", "arm64" }) {
+          shell.SelectNasArchitecture(architecture);
+          var selector = (ComboBox)shell.FindName("NasArchitecture");
+          check(Convert.ToString(((ComboBoxItem)selector.SelectedItem).Tag) == architecture, "select " + architecture);
+          check(Convert.ToString(((Button)shell.FindName("ExportButton")).Content) == (LauncherCore.HasOfflineImage(architecture) ? "校验并导出离线包" : "导出源码部署包"), "export mode for " + architecture);
+        }
         shell.Close();
         File.WriteAllText(Path.Combine(Root, "launcher-self-test.json"), Json.Serialize(new { ok = true, checks = checks, time = DateTime.UtcNow.ToString("o") }), Encoding.UTF8);
         return 0;
@@ -89,7 +98,9 @@ namespace Yingjian.ServerLauncher {
         string output = Path.GetFullPath(Arg(args, "--output-dir", Path.Combine(Root, "test-results", "launcher-layout")));
         Directory.CreateDirectory(output);
         var window = new MainWindow(true);
-        foreach (bool nas in new[] { false, true }) {
+        foreach (string mode in new[] { "local", "amd64", "arm64" }) {
+          bool nas = mode != "local";
+          if (nas) window.SelectNasArchitecture(mode);
           window.ShowTab(nas);
           ((TextBlock)window.FindName("Notice")).Text = "离线布局检查 · 此图不代表服务运行或实际窗口交互结果";
           var content = (FrameworkElement)window.Content;
@@ -99,7 +110,7 @@ namespace Yingjian.ServerLauncher {
           bitmap.Render(content);
           var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
           encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
-          using (var stream = File.Create(Path.Combine(output, nas ? "launcher-nas-layout.png" : "launcher-local-layout.png"))) encoder.Save(stream);
+          using (var stream = File.Create(Path.Combine(output, nas ? "launcher-nas-" + mode + "-layout.png" : "launcher-local-layout.png"))) encoder.Save(stream);
         }
         window.Close();
         File.WriteAllText(Path.Combine(output, "layout-test.json"), Json.Serialize(new { ok = true, kind = "offline WPF rendering, not interactive desktop QA" }), Encoding.UTF8);
@@ -319,19 +330,33 @@ namespace Yingjian.ServerLauncher {
       return null;
     }
     internal static bool HasOfflineImage() {
-      return File.Exists(Path.Combine(Program.Root, "deployment", "nas-offline", "image.tar"));
+      return HasOfflineImage("amd64");
+    }
+    internal static string ValidateArchitecture(string architecture) {
+      if (architecture != "amd64" && architecture != "arm64") throw new ArgumentException("请选择 AMD64 或 ARM64 架构。");
+      return architecture;
+    }
+    static string OfflineDirectory(string architecture) {
+      ValidateArchitecture(architecture);
+      string root = Path.Combine(Program.Root, "deployment", "nas-offline");
+      string bundle = Path.Combine(root, architecture);
+      if (architecture == "amd64" && !Directory.Exists(bundle) && File.Exists(Path.Combine(root, "image.tar"))) return root;
+      return bundle;
+    }
+    internal static bool HasOfflineImage(string architecture) {
+      return File.Exists(Path.Combine(OfflineDirectory(architecture), "image.tar"));
     }
     internal static readonly string[] OfflineFiles = {
       "image.tar", "image-metadata.txt", "image.tar.sha256", "verification.json", "manifest.json",
       "docker-compose.yml", ".env.example", "deploy.sh", "README.md", "THIRD-PARTY.md"
     };
-    static void ValidateOfflineImage() {
+    static void ValidateOfflineImage(string architecture) {
       string runtime = Path.Combine(Program.Root, "runtime", "node.exe");
       if (!File.Exists(runtime)) runtime = FindNode();
       string verifier = Path.Combine(Program.Root, "scripts", "verify-nas-offline.mjs");
       if (runtime == null || !File.Exists(verifier)) throw new IOException("离线镜像校验工具缺失，请重新解压完整服务端包。");
-      string bundle = Path.Combine(Program.Root, "deployment", "nas-offline");
-      var info = new ProcessStartInfo(runtime, Quote(verifier) + " " + Quote(bundle)) {
+      string bundle = OfflineDirectory(architecture);
+      var info = new ProcessStartInfo(runtime, Quote(verifier) + " " + Quote(bundle) + " --platform linux/" + ValidateArchitecture(architecture)) {
         UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
         StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
       };
@@ -348,11 +373,15 @@ namespace Yingjian.ServerLauncher {
       }
     }
     internal static string ExportNas(string parent, string ip, int port, string password, string volume) {
+      return ExportNas(parent, ip, port, password, volume, "amd64");
+    }
+    internal static string ExportNas(string parent, string ip, int port, string password, string volume, string architecture) {
+      ValidateArchitecture(architecture);
       parent = ValidateExportParent(parent);
       var env = BuildEnv(ip, port, password, volume);
-      bool offline = HasOfflineImage();
-      if (offline) ValidateOfflineImage();
-      var name = (offline ? "Yingjian-NAS-Offline-" : "Yingjian-NAS-Source-") + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 4);
+      bool offline = HasOfflineImage(architecture);
+      if (offline) ValidateOfflineImage(architecture);
+      var name = (offline ? "Yingjian-NAS-Offline-" : "Yingjian-NAS-Source-") + architecture + "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 4);
       var folder = Path.Combine(parent, name);
       if (Directory.Exists(folder) || File.Exists(folder + ".zip")) throw new IOException("目标已存在，请选择其他导出目录。");
       foreach (var item in offline ? new string[0] : new[] { "server", "public", "config" })
@@ -363,13 +392,20 @@ namespace Yingjian.ServerLauncher {
       try {
         Directory.CreateDirectory(folder);
         if (offline) {
-          foreach (var item in OfflineFiles) File.Copy(Path.Combine(Program.Root, "deployment", "nas-offline", item), Path.Combine(folder, item), false);
+          foreach (var item in OfflineFiles) File.Copy(Path.Combine(OfflineDirectory(architecture), item), Path.Combine(folder, item), false);
         } else {
           foreach (var item in new[] { "server", "public", "config" }) CopyDirectory(Path.Combine(Program.Root, item), Path.Combine(folder, item));
           foreach (var item in new[] { "package.json", "package-lock.json" }) File.Copy(Path.Combine(Program.Root, item), Path.Combine(folder, item), false);
           var thirdParty = Path.Combine(Program.Root, "THIRD-PARTY.md");
           if (File.Exists(thirdParty)) File.Copy(thirdParty, Path.Combine(folder, "THIRD-PARTY.md"), false);
           foreach (var item in templates) File.WriteAllText(Path.Combine(folder, item), File.ReadAllText(Path.Combine(Program.Root, "deployment", "nas", item)).Replace("\r\n", "\n"), new UTF8Encoding(false));
+          string composePath = Path.Combine(folder, "docker-compose.yml");
+          string compose = File.ReadAllText(composePath);
+          if (!compose.Contains("  yingjian:\n")) throw new IOException("NAS Compose 模板缺少服务定义。");
+          File.WriteAllText(composePath, compose.Replace("  yingjian:\n", "  yingjian:\n    platform: linux/" + architecture + "\n"), new UTF8Encoding(false));
+          File.WriteAllText(Path.Combine(folder, "target-platform.txt"), "linux/" + architecture + "\n", new UTF8Encoding(false));
+          string readmePath = Path.Combine(folder, "README.md");
+          File.WriteAllText(readmePath, "# NAS 源码部署包 · " + architecture.ToUpperInvariant() + "\n\n目标平台：linux/" + architecture + "。本包不包含 image.tar，需要 NAS 联网构建。\n\n" + File.ReadAllText(readmePath), new UTF8Encoding(false));
         }
         File.WriteAllText(Path.Combine(folder, ".env"), env, new UTF8Encoding(false));
         using (var zip = ZipFile.Open(folder + ".zip", ZipArchiveMode.Create)) {
@@ -450,12 +486,8 @@ namespace Yingjian.ServerLauncher {
       Find<Button>("ExitButton").Click += async (s, e) => await Exit();
       Find<Button>("ExportButton").Click += async (s, e) => await Export();
       Find<Button>("ExportFolderButton").Click += (s, e) => { if (lastExport != null) Open(lastExport); };
-      if (LauncherCore.HasOfflineImage()) {
-        Find<TextBlock>("NasMode").Text = "离线镜像部署";
-        Find<TextBlock>("NasHelp").Text = "已附带镜像文件。导出前校验完整性及容器验收记录，随后上传 NAS 导入并启动。";
-        Find<TextBlock>("NasContents").Text = "导出完整应用镜像、Compose 和配置。NAS 不需要构建。管理密码保存在包内 .env，请妥善保存。";
-        Find<Button>("ExportButton").Content = "校验并导出离线包";
-      }
+      Find<ComboBox>("NasArchitecture").SelectionChanged += (s, e) => UpdateNasMode();
+      UpdateNasMode();
       Find<TextBox>("PortInput").LostKeyboardFocus += async (s, e) => { await Refresh(); };
       Find<TextBox>("PortInput").TextChanged += (s, e) => {
         if (!busy) {
@@ -486,13 +518,28 @@ namespace Yingjian.ServerLauncher {
       tray.ContextMenuStrip = menu; tray.DoubleClick += (s, e) => Restore();
     }
     void Restore() { Show(); WindowState = WindowState.Normal; Activate(); }
+    string NasArchitecture() {
+      var selected = Find<ComboBox>("NasArchitecture").SelectedItem as ComboBoxItem;
+      return LauncherCore.ValidateArchitecture(selected == null ? "amd64" : Convert.ToString(selected.Tag));
+    }
+    internal void SelectNasArchitecture(string architecture) {
+      Find<ComboBox>("NasArchitecture").SelectedIndex = LauncherCore.ValidateArchitecture(architecture) == "amd64" ? 0 : 1;
+    }
+    void UpdateNasMode() {
+      bool offline = LauncherCore.HasOfflineImage(NasArchitecture());
+      Find<TextBlock>("NasMode").Text = offline ? "离线镜像部署" : "源码部署 · 需要联网构建";
+      Find<TextBlock>("NasHelp").Text = offline ? "已附带此架构的镜像，导出前自动校验。上传 NAS 后导入并启动。" : "尚未附带此架构的离线镜像。导出源码后，需要 NAS 联网下载依赖并构建。";
+      Find<TextBlock>("NasContents").Text = offline ? "包含完整镜像和配置，NAS 无需构建。管理密码保存在包内 .env，请妥善保存。" : "包含应用源码和配置，不含离线镜像。管理密码保存在包内 .env，请妥善保存。";
+      Find<Button>("ExportButton").Content = offline ? "校验并导出离线包" : "导出源码部署包";
+      if (Find<Grid>("NasPanel").Visibility == Visibility.Visible) Find<TextBlock>("PageSubtitle").Text = "选择 NAS 的处理器架构，再填写连接地址和配置。";
+    }
     internal void ShowTab(bool nas) {
       Find<Grid>("LocalPanel").Visibility = nas ? Visibility.Collapsed : Visibility.Visible;
       Find<Grid>("NasPanel").Visibility = nas ? Visibility.Visible : Visibility.Collapsed;
       Find<Button>("LocalTab").Background = Brush(nas ? "#FFFFFF" : "#B9F3E4");
       Find<Button>("NasTab").Background = Brush(nas ? "#B9F3E4" : "#FFFFFF");
       Find<TextBlock>("PageTitle").Text = nas ? "部署到 NAS" : "家里的影音服务";
-      Find<TextBlock>("PageSubtitle").Text = nas ? (LauncherCore.HasOfflineImage() ? "配置连接地址，校验并导出 NAS 离线镜像包。" : "当前附带源码部署包，NAS 首次启动需要联网构建。") : "在这台电脑上运行，供局域网内的设备连接。";
+      Find<TextBlock>("PageSubtitle").Text = nas ? "选择 NAS 的处理器架构，再填写连接地址和配置。" : "在这台电脑上运行，供局域网内的设备连接。";
       Notice("");
     }
     static SolidColorBrush Brush(string hex) { return (SolidColorBrush)new BrushConverter().ConvertFromString(hex); }
@@ -517,6 +564,7 @@ namespace Yingjian.ServerLauncher {
       Find<Button>("AdminButton").IsEnabled = !busy && current.IsYingjian;
       Find<Button>("CopyButton").IsEnabled = !busy && current.IsYingjian && current.Addresses.Length > 0;
       Find<Button>("ExportButton").IsEnabled = !busy;
+      Find<ComboBox>("NasArchitecture").IsEnabled = !busy;
       Find<Button>("ChangeDataButton").IsEnabled = !busy && !running;
     }
     void SaveSettings() {
@@ -614,6 +662,8 @@ namespace Yingjian.ServerLauncher {
       reallyClosing = true; poll.Stop(); tray.Visible = false; tray.Dispose(); Close(); Application.Current.Shutdown();
     }
     async Task Export() {
+      string architecture = NasArchitecture();
+      bool offline = LauncherCore.HasOfflineImage(architecture);
       string ip = Find<TextBox>("NasIp").Text.Trim(), password = Find<PasswordBox>("NasPassword").Password;
       string volume = Find<TextBox>("NasVolume").Text.Trim(); if (volume.Length == 0) volume = "yingjian-data";
       int port;
@@ -621,12 +671,12 @@ namespace Yingjian.ServerLauncher {
       catch (Exception ex) { Notice(ex.Message); return; }
       using (var dialog = new Forms.FolderBrowserDialog { Description = "选择保存位置，将新建独立的 NAS 部署文件夹和 ZIP 包。", ShowNewFolderButton = true }) {
         if (dialog.ShowDialog() != Forms.DialogResult.OK) return;
-        busy = true; Controls(); Notice(LauncherCore.HasOfflineImage() ? "正在校验并导出完整镜像，文件较大，请稍候…" : "正在导出源码部署包…");
+        busy = true; Controls(); Notice(offline ? "正在校验并导出完整镜像，文件较大，请稍候…" : "正在导出源码部署包…");
         try {
-          lastExport = await Task.Run(() => LauncherCore.ExportNas(dialog.SelectedPath, ip, port, password, volume));
+          lastExport = await Task.Run(() => LauncherCore.ExportNas(dialog.SelectedPath, ip, port, password, volume, architecture));
           Find<PasswordBox>("NasPassword").Clear();
           Find<Button>("ExportFolderButton").Visibility = Visibility.Visible;
-          Notice(LauncherCore.HasOfflineImage() ? "离线包已生成。上传 NAS，导入 image.tar，再按 README 启动 Compose。" : "源码包已生成。NAS 仍需联网下载依赖和构建；这不是离线镜像包。");
+          Notice(offline ? "离线包已生成。上传 NAS，导入 image.tar，再按 README 启动 Compose。" : "源码包已生成。NAS 仍需联网下载依赖和构建；这不是离线镜像包。");
           Log("NAS 部署包已导出。");
         } catch (Exception ex) { Notice("导出失败：" + ex.Message); }
         finally { busy = false; Controls(); }

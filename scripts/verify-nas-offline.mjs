@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const imageTag = 'yingjian-server:0.1.4-nas1';
+export const imageTags = { 'linux/amd64': imageTag, 'linux/arm64': `${imageTag}-arm64` };
 export const bundleFiles = [
   'image.tar', 'image-metadata.txt', 'image.tar.sha256', 'verification.json',
   'docker-compose.yml', '.env.example', 'deploy.sh', 'README.md', 'THIRD-PARTY.md',
@@ -18,7 +19,7 @@ async function sha256(path) {
 }
 
 // Read only the Docker save manifest/config. Never extract archive paths.
-async function inspectArchive(path, expectedId) {
+async function inspectArchive(path, expectedId, platform, tag) {
   const file = await open(path, 'r');
   try {
     const { size: total } = await file.stat();
@@ -71,19 +72,20 @@ async function inspectArchive(path, expectedId) {
     const manifest = JSON.parse((await textAt(manifestEntry.offset, manifestEntry.size)).toString('utf8'));
     need(Array.isArray(manifest) && manifest.length === 1, 'Archive must contain exactly one application image.');
     const image = manifest[0];
-    need(Array.isArray(image.RepoTags) && image.RepoTags.includes(imageTag), 'Archive application tag does not match.');
+    need(Array.isArray(image.RepoTags) && image.RepoTags.includes(tag), 'Archive application tag does not match.');
     const configEntry = entries.get(image.Config);
     need(configEntry, 'Image config missing from archive.');
     const configBytes = await textAt(configEntry.offset, configEntry.size);
     need(`sha256:${createHash('sha256').update(configBytes).digest('hex')}` === expectedId, 'Archive image ID does not match verification.');
     const config = JSON.parse(configBytes.toString('utf8'));
-    need(config.os === 'linux' && config.architecture === 'amd64', 'Archive must be linux/amd64.');
+    need(`${config.os}/${config.architecture}` === platform, `Archive must be ${platform}.`);
     need(config.config?.User && !/^(?:root|0)(?::|$)/.test(config.config.User), 'Image must run as a non-root user.');
     need(Array.isArray(image.Layers) && image.Layers.length > 0 && image.Layers.every(layer => entries.has(layer)), 'Archive image layers are incomplete.');
   } finally { await file.close(); }
 }
 
-export async function verifyBundle(directory, { writeManifest = false } = {}) {
+export async function verifyBundle(directory, { writeManifest = false, platform: expectedPlatform } = {}) {
+  need(expectedPlatform === undefined || Object.hasOwn(imageTags, expectedPlatform), 'Unsupported requested platform.');
   const root = resolve(directory);
   const allowed = new Set([...bundleFiles, 'manifest.json']);
   for (const name of await readdir(root)) need(allowed.has(name), `Unexpected file in generic offline bundle: ${name}`);
@@ -98,10 +100,12 @@ export async function verifyBundle(directory, { writeManifest = false } = {}) {
   need(report.schemaVersion === 1 && report.appVersion === '0.1.4', 'Unsupported image verification report.');
   need(report.verificationMode === 'docker-runtime' && report.passed === true, 'Actual Docker runtime verification is required.');
   need(typeof report.verifiedAt === 'string' && Number.isFinite(Date.parse(report.verifiedAt)), 'Missing verification timestamp.');
-  need(report.image?.tag === imageTag && report.image.platform === 'linux/amd64' && /^sha256:[a-f0-9]{64}$/.test(report.image.id), 'Invalid verified image identity.');
+  const platform = report.image?.platform;
+  need(Object.hasOwn(imageTags, platform) && report.image.tag === imageTags[platform] && /^sha256:[a-f0-9]{64}$/.test(report.image.id), 'Invalid verified image identity.');
+  need(!expectedPlatform || platform === expectedPlatform, `Bundle platform does not match requested ${expectedPlatform}.`);
   for (const name of requiredChecks) need(report.checks?.[name] === true, `Container verification did not pass: ${name}`);
   need(report.archive?.file === 'image.tar' && report.archive.bytes === files['image.tar'].bytes && report.archive.sha256 === files['image.tar'].sha256, 'Image archive differs from the verified export.');
-  const expectedMetadata = `IMAGE_ID=${report.image.id}\nIMAGE_PLATFORM=linux/amd64\n`;
+  const expectedMetadata = `IMAGE_ID=${report.image.id}\nIMAGE_PLATFORM=${platform}\n`;
   need(await readFile(join(root, 'image-metadata.txt'), 'utf8') === expectedMetadata, 'Image metadata mismatch.');
   need(await readFile(join(root, 'image.tar.sha256'), 'utf8') === `${files['image.tar'].sha256}  image.tar\n`, 'Image checksum file mismatch.');
   for (const name of ['docker-compose.yml', 'deploy.sh', '.env.example']) {
@@ -109,8 +113,11 @@ export async function verifyBundle(directory, { writeManifest = false } = {}) {
     need(!text.includes('\r') && !text.startsWith('\uFEFF'), `${name} must use UTF-8 without BOM and LF.`);
   }
   const compose = await readFile(join(root, 'docker-compose.yml'), 'utf8');
-  need(/^\s+image: yingjian-server:0\.1\.4-nas1\s*$/m.test(compose) && /^\s+pull_policy: never\s*$/m.test(compose) && !/^\s+build:/m.test(compose), 'Compose must use only the included image, without build/pull.');
-  await inspectArchive(join(root, 'image.tar'), report.image.id);
+  const imageLines = compose.split('\n').filter(line => /^\s+image:/.test(line)).map(line => line.trim());
+  need(imageLines.length === 1 && imageLines[0] === `image: ${report.image.tag}` && /^\s+pull_policy: never\s*$/m.test(compose) && !/^\s+build:/m.test(compose), 'Compose must use only the included image, without build/pull.');
+  const platforms = compose.split('\n').filter(line => /^\s+platform:/.test(line)).map(line => line.trim());
+  need((platform === 'linux/amd64' && platforms.length === 0) || (platforms.length === 1 && platforms[0] === `platform: ${platform}`), 'Compose platform does not match image.');
+  await inspectArchive(join(root, 'image.tar'), report.image.id, platform, report.image.tag);
   const manifest = { schemaVersion: 1, appVersion: report.appVersion, image: report.image, verifiedAt: report.verifiedAt, files };
   if (writeManifest) {
     const path = join(root, 'manifest.json');
@@ -130,7 +137,13 @@ export async function verifyBundle(directory, { writeManifest = false } = {}) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
-    need(process.argv.length >= 3 && process.argv.length <= 4 && (!process.argv[3] || process.argv[3] === '--write-manifest'), 'Usage: node verify-nas-offline.mjs BUNDLE [--write-manifest]');
-    console.log(JSON.stringify(await verifyBundle(process.argv[2], { writeManifest: process.argv[3] === '--write-manifest' })));
+    const args = process.argv.slice(3), options = {};
+    need(process.argv[2], 'Usage: node verify-nas-offline.mjs BUNDLE [--write-manifest] [--platform linux/amd64|linux/arm64]');
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '--write-manifest' && !options.writeManifest) options.writeManifest = true;
+      else if (args[i] === '--platform' && options.platform === undefined && Object.hasOwn(imageTags, args[i + 1])) options.platform = args[++i];
+      else throw new Error('Unknown, duplicate, or invalid validation option.');
+    }
+    console.log(JSON.stringify(await verifyBundle(process.argv[2], options)));
   } catch (error) { console.error(`Offline release validation failed: ${error.message}`); process.exitCode = 1; }
 }

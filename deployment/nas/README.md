@@ -4,6 +4,8 @@
 
 ## 首次部署
 
+Windows 启动器可选择 AMD64 或 ARM64 导出。指定架构的源码包包含 `target-platform.txt` 与固定 `platform` 的 Compose；部署脚本会核对 NAS 架构，错误时在改动配置或容器前拒绝。ARM64 为 64 位 ARM / aarch64，不支持 32 位 ARM。源码包不包含已构建镜像，首次需要联网构建。
+
 1. 在 NAS 上安装并启动 Docker / Container Manager，准备支持 Compose 的环境。
 2. 将 Windows 服务端启动器导出的整个文件夹上传到 NAS。不要只上传 `docker-compose.yml`：构建需要同级 `server`、`public`、`config`、`package.json` 和 `package-lock.json`。
 3. 如果使用通用未配置压缩包，复制 `.env.example` 为 `.env`，填写 NAS 的局域网 IPv4、端口和 12–128 位管理密码。启动器导出的包已包含配置。

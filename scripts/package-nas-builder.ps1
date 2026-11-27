@@ -5,7 +5,7 @@ if (!$DestinationRoot) { $DestinationRoot = Join-Path $projectRoot 'release' }
 $name = 'Yingjian-NAS-Image-Builder-0.1.4-nas1'
 $destination = [IO.Path]::GetFullPath($DestinationRoot)
 $bundle = Join-Path $destination $name
-if ((Test-Path -LiteralPath $bundle) -or (Test-Path -LiteralPath "$bundle.zip")) { throw 'Output already exists. Choose another destination.' }
+if ((Test-Path -LiteralPath $bundle) -or (Test-Path -LiteralPath "$bundle.zip") -or (Test-Path -LiteralPath "$bundle.zip.partial")) { throw 'Output already exists. Choose another destination.' }
 New-Item -ItemType Directory -Path (Join-Path $bundle 'scripts') -Force | Out-Null
 $tar = (Get-Command tar.exe -ErrorAction Stop).Source
 & $tar -czf (Join-Path $bundle 'build-input.tgz') --exclude=deployment/nas-offline/tests -C $projectRoot `
@@ -43,13 +43,13 @@ $readme = @'
 映间 NAS 离线镜像制作工具
 
 这是一次性制作工具。工具包本身不包含成品镜像；成功制作后，镜像和验收记录保存在 output 中。
-默认连接：192.168.1.8，SSH 用户：2402108902。
+启动时选择目标镜像架构，并输入可用的 Docker 制作机器地址和 SSH 用户名；不会自动连接预设地址。
 
 请在能访问 NAS 的家里 Windows 电脑运行。
 如果你人在外面、通过远程软件控制家里电脑：先将完整 ZIP 传到家里电脑，在家里电脑解压并运行。
 不用让你当前所在的电脑直接访问 NAS，也不用配置外网端口。
 
-1. 解压完整工具包，双击 Make-NAS-Image.cmd。
+1. 解压完整工具包，双击 Make-NAS-Image.cmd，选择 1（x86-64 / AMD64）或 2（ARM64）。
 2. 按系统 SSH 提示输入 NAS 登录密码。三次连接可能分别要求密码，输入时不回显。
 3. 等待自动构建、启动检查、登录、电视配对、重建容器后的数据保留测试。
 4. 全部通过后，会自动取回镜像、核验摘要，并打开存放离线 ZIP 的 output 文件夹。
@@ -59,7 +59,10 @@ $readme = @'
 
 制作过程使用独立临时容器和测试数据卷，不替换原 yingjian-lan，不操作原家庭数据。
 首次制作需要 NAS 联网下载缺失的基础镜像/npm 依赖；制作好的离线包安装时无需这些下载。
-要求 NAS 为 Linux x86-64/AMD64，已开启 SSH，登录账户可直接使用 Docker。
+要求制作机器运行 Linux Docker，已开启 SSH，登录账户可直接使用 Docker。
+优先在相同架构的机器制作；跨架构构建必须由管理员预先配置 Docker 模拟运行支持，本工具不安装模拟器或更改系统。
+ARM64 对应 64 位 ARM，不支持 ARMv7 等 32 位 ARM。
+只有目标架构的实际容器运行验收通过后才输出成品；源码包或只有构建成功的镜像不会被标记为已验收离线包。
 没有 Docker 权限时会明确报错停止，不自动修改账户权限或安装软件。
 NAS 的 /tmp 和电脑需有足够的制作及镜像导出空间。
 
@@ -67,7 +70,7 @@ NAS 的 /tmp 和电脑需有足够的制作及镜像导出空间。
 不需要继续在 NAS 上改 Node 版本、安装 npm 或反复重建。
 
 若 NAS 地址或用户名不同，可在 PowerShell 运行：
-powershell -File .\scripts\make-nas-offline.ps1 -NasAddress 192.168.1.8 -NasUser 你的用户名
+powershell -File .\scripts\make-nas-offline.ps1 -NasAddress 192.168.1.8 -NasUser 你的用户名 -Architecture arm64
 
 失败时窗口会保留错误文字；工具不会把失败结果命名为正式成品。
 NAS 上的 /tmp/yingjian-image-日期-随机编号 目录保留制作材料，拿到成品后可自行清理。
@@ -75,7 +78,14 @@ NAS 上的 /tmp/yingjian-image-日期-随机编号 目录保留制作材料，�
 [IO.File]::WriteAllText((Join-Path $bundle '先读我.txt'), $readme, [Text.UTF8Encoding]::new($true))
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[IO.Compression.ZipFile]::CreateFromDirectory($bundle, "$bundle.zip", [IO.Compression.CompressionLevel]::Optimal, $true)
+$zip = [IO.Compression.ZipFile]::Open("$bundle.zip.partial", [IO.Compression.ZipArchiveMode]::Create)
+try {
+  foreach ($file in Get-ChildItem -LiteralPath $bundle -File -Recurse -Force | Sort-Object FullName) {
+    $relative = $file.FullName.Substring($bundle.Length + 1).Replace('\', '/')
+    [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $file.FullName, "$name/$relative", [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+  }
+} finally { $zip.Dispose() }
+Move-Item -LiteralPath "$bundle.zip.partial" -Destination "$bundle.zip"
 $hash = (Get-FileHash -LiteralPath "$bundle.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText("$bundle.zip.sha256", "$hash  $name.zip`n", [Text.UTF8Encoding]::new($false))
 [pscustomobject]@{ Bundle=$bundle; Archive="$bundle.zip"; SHA256=$hash; IsFinishedImage=$false } | ConvertTo-Json

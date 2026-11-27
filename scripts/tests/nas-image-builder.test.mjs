@@ -12,9 +12,9 @@ const mock = `#!/bin/sh
 printf '%s\\n' "$*" >> calls.txt
 case "$1:\${2:-}" in
   info:) [ "\${FAIL_AT:-}" != engine ]; exit $? ;;
-  info:--format) printf 'linux/x86_64\\n'; exit 0 ;;
+  info:--format) printf '%s\\n' "\${MOCK_HOST:-linux/x86_64}"; exit 0 ;;
   build:*) [ "\${FAIL_AT:-}" != build ]; exit $? ;;
-  image:inspect) printf 'sha256:${'a'.repeat(64)} linux/amd64\\n'; exit 0 ;;
+  image:inspect) printf 'sha256:${'a'.repeat(64)} %s\\n' "\${MOCK_IMAGE:-linux/amd64}"; exit 0 ;;
   volume:inspect|container:inspect) exit 1 ;;
   volume:create) touch volume-created; exit 0 ;;
   create:*) touch container-created; exit 0 ;;
@@ -45,9 +45,9 @@ function fixture(t) {
   copyFileSync(join(sourceRoot, 'THIRD-PARTY.md'), join(root, 'THIRD-PARTY.md'));
   writeFileSync(join(root, 'bin/docker'), mock, { mode: 0o755 });
   return {
-    run(env) { return spawnSync(shell, ['-c', 'export PATH="$PWD/bin:$PATH"; exec sh scripts/build-nas-image.sh output'], { cwd: root, env: { ...process.env, ...env }, encoding: 'utf8' }); },
+    run(env, architecture) { return spawnSync(shell, ['-c', 'export PATH="$PWD/bin:$PATH"; exec sh scripts/build-nas-image.sh output ${1:+"$1"}', 'test', architecture || ''], { cwd: root, env: { ...process.env, ...env }, encoding: 'utf8' }); },
     calls() { return readFileSync(join(root, 'calls.txt'), 'utf8'); },
-    hasRelease() { return existsSync(join(root, 'output/Yingjian-Server-0.1.4-nas1-linux-amd64-Offline')); },
+    hasRelease() { return ['amd64', 'arm64'].some(arch => existsSync(join(root, `output/Yingjian-Server-0.1.4-nas1-linux-${arch}-Offline`))); },
   };
 }
 for (const stage of ['engine', 'build', 'login', 'persistence', 'archive-verifier']) {
@@ -73,4 +73,26 @@ test('unhealthy startup stops before login and export (mock Docker)', { skip: !e
   assert.equal(f.hasRelease(), false);
   assert.doesNotMatch(f.calls(), /^exec |^save /m);
   assert.match(result.stderr, /Test container failed/);
+});
+
+for (const [host, architecture] of [['linux/aarch64', undefined], ['linux/x86_64', 'arm64']]) {
+  test(`ARM64 pipeline passes target to build and execution on ${host} (mock Docker)`, { skip: !existsSync(shell) }, t => {
+    const f = fixture(t);
+    const result = f.run({ MOCK_HOST: host, MOCK_IMAGE: 'linux/arm64' }, architecture);
+    assert.notEqual(result.status, 0, 'Mock archive verifier must prevent publishing.');
+    assert.equal(f.hasRelease(), false);
+    const calls = f.calls();
+    assert.match(calls, /^build --platform linux\/arm64 /m);
+    assert.equal(calls.split('\n').filter(line => /^create --platform linux\/arm64 /.test(line)).length, 2);
+    assert.match(calls, /^run --rm --platform linux\/arm64 .* --platform linux\/arm64$/m);
+    assert.match(calls, /yingjian-server:0\.1\.4-nas1-arm64/);
+  });
+}
+test('wrong built architecture stops before creating test resources (mock Docker)', { skip: !existsSync(shell) }, t => {
+  const f = fixture(t);
+  const result = f.run({}, 'arm64');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unexpected built image platform/);
+  assert.doesNotMatch(f.calls(), /^volume create|^create |^save /m);
+  assert.equal(f.hasRelease(), false);
 });

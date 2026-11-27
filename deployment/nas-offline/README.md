@@ -1,12 +1,12 @@
 # 映间服务端 · NAS 离线镜像包
 
-完整发行包包含 `image.tar`、`image-metadata.txt`、`image.tar.sha256` 和部署配置。NAS 导入镜像后直接启动，不在 NAS 上构建程序，不下载 Node 或 npm 依赖。当前模板对应 **Linux x86-64 / AMD64**，需要 Docker 和 Compose v2。
+完整发行包包含 `image.tar`、`image-metadata.txt`、`image.tar.sha256` 和部署配置。NAS 导入镜像后直接启动，不在 NAS 上构建程序，不下载 Node 或 npm 依赖。请按包名和 `image-metadata.txt` 选择 **Linux AMD64 / x86-64** 或 **ARM64 / aarch64**，两者不可混用；不支持 32 位 ARM。需要 Docker 和 Compose v2。
 
 **源码仓库中的本目录只有部署模板。缺少上述镜像文件时，它不是可安装的成品包；实际镜像必须先完成容器运行验证再打包。**
 
 ## 飞牛界面安装
 
-1. 将完整发行包上传 NAS 并解压。在 Docker 的镜像页面使用本地导入功能，选择 `image.tar`。导入后应看到 `yingjian-server:0.1.4-nas1`。
+1. 将完整发行包上传 NAS 并解压。在 Docker 的镜像页面使用本地导入功能，选择 `image.tar`。AMD64 镜像名为 `yingjian-server:0.1.4-nas1`，ARM64 为 `yingjian-server:0.1.4-nas1-arm64`，应与本包 Compose 一致。
 2. 初次安装：将 `.env.example` 复制为 `.env`，填写 NAS 的局域网 IP、端口和管理密码。端口没有占用时可用 `8080`，容器内部端口固定为 `8080`。
 3. 创建 Compose 项目，使用本包 `docker-compose.yml` 和同目录 `.env`，启动项目。配置只引用刚导入的完整镜像，不需要点“构建”。
 4. 容器状态为健康后，在电脑或手机浏览器访问 `.env` 中的 `PUBLIC_ORIGIN`，例如 `http://192.168.1.8:8080`。管理页提供手机、电视的连接码及二维码。

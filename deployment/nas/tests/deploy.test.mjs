@@ -20,6 +20,7 @@ const mockDocker = `#!/bin/sh
 printf '%s|volume=%s|image=%s\\n' "$*" "\${DATA_VOLUME:-}" "\${NODE_IMAGE:-}" >> calls.txt
 case "$1:$2" in
   info:) exit 0 ;;
+  info:--format) printf '%s\\n' "\${FAKE_PLATFORM:-linux/amd64}"; exit 0 ;;
   compose:version) [ "\${FAKE_COMPOSE:-v2}" = v2 ]; exit $? ;;
   container:inspect)
     [ "\${FAKE_CONTAINER:-}" = yes ] || exit 1
@@ -210,4 +211,52 @@ test('legacy docker-compose is supported when v2 is unavailable', { skip: !suppo
   const result = f.run('start', { FAKE_COMPOSE: 'v1' });
   assert.equal(result.status, 0, result.stderr);
   assert.match(f.calls(), /v1 --env-file .*up -d --build\|volume=yingjian-data/);
+});
+
+function setTarget(fixture, platform, composePlatform = platform) {
+  writeFileSync(join(fixture.root, 'target-platform.txt'), `${platform}\n`);
+  const compose = readFileSync(join(fixture.root, 'docker-compose.yml'), 'utf8');
+  writeFileSync(join(fixture.root, 'docker-compose.yml'), compose.replace('  yingjian:\n', `  yingjian:\n    platform: ${composePlatform}\n`));
+}
+
+for (const host of ['linux/arm64', 'linux/aarch64']) {
+  test(`ARM64 source deploy accepts ${host} and preserves the existing volume`, { skip: !supported }, t => {
+    const f = fixture(t);
+    setTarget(f, 'linux/arm64');
+    const result = f.run('start', { FAKE_PLATFORM: host, FAKE_CONTAINER: 'yes' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(f.calls(), /up -d --build\|volume=legacy_yingjian-data/);
+    assert.match(f.config(), /DATA_VOLUME=legacy_yingjian-data/);
+  });
+}
+for (const host of ['linux/amd64', 'linux/x86_64', 'linux/armv7l']) {
+  test(`ARM64 source deploy rejects ${host} before changing configuration or containers`, { skip: !supported }, t => {
+    const f = fixture(t);
+    setTarget(f, 'linux/arm64');
+    const previous = f.config();
+    const result = f.run('start', { FAKE_PLATFORM: host });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Wrong deployment package|Unsupported NAS platform/);
+    assert.equal(f.config(), previous);
+    assert.ok(!f.calls().includes('container inspect'));
+    assert.ok(!f.calls().includes('up -d'));
+  });
+}
+test('source bundle platform must match Compose before deployment', { skip: !supported }, t => {
+  const f = fixture(t);
+  setTarget(f, 'linux/arm64', 'linux/amd64');
+  const previous = f.config();
+  const result = f.run('start', { FAKE_PLATFORM: 'linux/arm64' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Compose platform does not match/);
+  assert.equal(f.config(), previous);
+  assert.ok(!f.calls().includes('up -d'));
+});
+test('unknown source target platform is rejected even by configuration validation', { skip: !supported }, t => {
+  const f = fixture(t);
+  setTarget(f, 'linux/arm/v7');
+  const result = f.run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unsupported target platform/);
+  assert.equal(f.calls(), '');
 });

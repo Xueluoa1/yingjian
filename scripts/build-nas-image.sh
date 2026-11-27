@@ -1,19 +1,26 @@
 #!/bin/sh
-# Run once on a Linux AMD64 Docker builder. Does not deploy/replace yingjian-lan.
+# Run on a Linux Docker builder. Does not deploy/replace yingjian-lan.
 set -eu
 umask 077
 fail() { printf '%s\n' "Error: $*" >&2; exit 1; }
 ROOT=$(CDPATH= cd -P "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
-[ "$#" -le 1 ] || fail "Usage: sh scripts/build-nas-image.sh [output-parent]"
+[ "$#" -le 2 ] || fail "Usage: sh scripts/build-nas-image.sh [output-parent] [amd64|arm64]"
 command -v docker >/dev/null 2>&1 || fail "Docker is required on the build machine."
 docker info >/dev/null 2>&1 || fail "Docker is not running or this account lacks access."
 platform=$(docker info --format '{{.OSType}}/{{.Architecture}}')
-case "$platform" in linux/amd64|linux/x86_64) ;; *) fail "Build on a Linux AMD64 Docker engine." ;; esac
+case "$platform" in
+  linux/amd64|linux/x86_64) host_arch=amd64 ;;
+  linux/arm64|linux/aarch64) host_arch=arm64 ;;
+  *) fail "Build on a Linux AMD64 or ARM64 Docker engine." ;;
+esac
+ARCH=${2:-$host_arch}
+case "$ARCH" in amd64|arm64) ;; *) fail "Unsupported target architecture; use amd64 or arm64." ;; esac
+TARGET_PLATFORM="linux/$ARCH"
 OUTPUT=${1:-"$ROOT/release"}
 mkdir -p "$OUTPUT"
 OUTPUT=$(CDPATH= cd -P "$OUTPUT" && pwd)
-BUNDLE="$OUTPUT/Yingjian-Server-0.1.4-nas1-linux-amd64-Offline"
+BUNDLE="$OUTPUT/Yingjian-Server-0.1.4-nas1-linux-$ARCH-Offline"
 [ ! -e "$BUNDLE" ] || fail "Output exists. Choose a new output directory."
 WORK=$(mktemp -d "$OUTPUT/.yingjian-image-build.XXXXXXXX")
 suffix=${WORK##*.}
@@ -21,6 +28,7 @@ CONTAINER="yingjian-image-check-$suffix"
 VOLUME="yingjian-image-check-$suffix"
 TEMP_TAG="yingjian-image-build:$suffix"
 FINAL_TAG=yingjian-server:0.1.4-nas1
+[ "$ARCH" = amd64 ] || FINAL_TAG="$FINAL_TAG-arm64"
 LABEL="yingjian.image-verification=$suffix"
 created_container=0
 created_volume=0
@@ -41,12 +49,12 @@ for name in docker-compose.yml .env.example deploy.sh README.md; do
   [ -f "$ROOT/deployment/nas-offline/$name" ] || fail "Missing offline template: $name"
 done
 printf '%s\n' "[1/5] Building application image. Existing containers are not changed."
-docker build --platform linux/amd64 \
+docker build --platform "$TARGET_PLATFORM" \
   --build-arg "NODE_IMAGE=${NODE_IMAGE:-public.ecr.aws/docker/library/node:24-alpine}" \
   --file "$ROOT/deployment/nas/Dockerfile" --tag "$TEMP_TAG" "$ROOT"
 identity=$(docker image inspect --format '{{.Id}} {{.Os}}/{{.Architecture}}' "$TEMP_TAG")
 IMAGE_ID=${identity%% *}
-[ "$identity" = "$IMAGE_ID linux/amd64" ] || fail "Unexpected built image platform."
+[ "$identity" = "$IMAGE_ID $TARGET_PLATFORM" ] || fail "Unexpected built image platform."
 docker volume inspect "$VOLUME" >/dev/null 2>&1 && fail "Temporary volume name collision."
 docker container inspect "$CONTAINER" >/dev/null 2>&1 && fail "Temporary container name collision."
 docker volume create --label "$LABEL" "$VOLUME" >/dev/null
@@ -56,7 +64,7 @@ password=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
 printf 'ADMIN_PASSWORD=%s\nPUBLIC_ORIGIN=http://127.0.0.1:8080\n' "$password" > "$WORK/test.env"
 unset password
 start_test_container() {
-  docker create --name "$CONTAINER" --label "$LABEL" --network none \
+  docker create --platform "$TARGET_PLATFORM" --name "$CONTAINER" --label "$LABEL" --network none \
     --env-file "$WORK/test.env" --mount "type=volume,source=$VOLUME,target=/app/data" \
     --health-interval 2s --health-start-period 3s --health-timeout 3s --health-retries 10 \
     "$IMAGE_ID" >/dev/null
@@ -96,7 +104,7 @@ docker save --output "$STAGE/image.tar" "$FINAL_TAG"
 archive_hash=$(sha256sum "$STAGE/image.tar")
 archive_hash=${archive_hash%% *}
 archive_bytes=$(wc -c < "$STAGE/image.tar" | tr -d ' ')
-printf 'IMAGE_ID=%s\nIMAGE_PLATFORM=linux/amd64\n' "$IMAGE_ID" > "$STAGE/image-metadata.txt"
+printf 'IMAGE_ID=%s\nIMAGE_PLATFORM=%s\n' "$IMAGE_ID" "$TARGET_PLATFORM" > "$STAGE/image-metadata.txt"
 printf '%s  image.tar\n' "$archive_hash" > "$STAGE/image.tar.sha256"
 verified_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 cat > "$STAGE/verification.json" <<EOF
@@ -106,7 +114,7 @@ cat > "$STAGE/verification.json" <<EOF
   "verificationMode": "docker-runtime",
   "verifiedAt": "$verified_at",
   "passed": true,
-  "image": {"tag": "$FINAL_TAG", "id": "$IMAGE_ID", "platform": "linux/amd64"},
+  "image": {"tag": "$FINAL_TAG", "id": "$IMAGE_ID", "platform": "$TARGET_PLATFORM"},
   "archive": {"file": "image.tar", "sha256": "$archive_hash", "bytes": $archive_bytes},
   "checks": {"nonRoot": true, "health": true, "adminLogin": true, "staticAssets": true, "persistenceRecreate": true, "pairing": true}
 }
@@ -114,16 +122,19 @@ EOF
 for name in docker-compose.yml .env.example deploy.sh README.md; do
   cp "$ROOT/deployment/nas-offline/$name" "$STAGE/$name"
 done
+if [ "$ARCH" = arm64 ]; then
+  sed 's/image: yingjian-server:0.1.4-nas1$/image: yingjian-server:0.1.4-nas1-arm64\n    platform: linux\/arm64/' "$ROOT/deployment/nas-offline/docker-compose.yml" > "$STAGE/docker-compose.yml"
+fi
 cp "$ROOT/THIRD-PARTY.md" "$STAGE/THIRD-PARTY.md"
 chmod 644 "$STAGE/"* "$STAGE/.env.example"
 # The builder needs no host Node installation. This isolated helper hashes files.
 cp "$ROOT/scripts/verify-nas-offline.mjs" "$WORK/verify.mjs"
 chmod 644 "$WORK/verify.mjs"
 printf '%s\n' "[5/5] Verifying archive identity and writing the complete manifest."
-docker run --rm --network none --read-only --user "$(id -u):$(id -g)" \
+docker run --rm --platform "$TARGET_PLATFORM" --network none --read-only --user "$(id -u):$(id -g)" \
   --mount "type=bind,source=$STAGE,target=/bundle" \
   --mount "type=bind,source=$WORK/verify.mjs,target=/verify.mjs,readonly" \
-  --entrypoint node "$IMAGE_ID" /verify.mjs /bundle --write-manifest
+  --entrypoint node "$IMAGE_ID" /verify.mjs /bundle --write-manifest --platform "$TARGET_PLATFORM"
 [ -s "$STAGE/manifest.json" ] || fail "Archive verification did not produce a manifest."
 # Publish only a complete verified directory. The result contains no test data.
 mv "$STAGE" "$BUNDLE"

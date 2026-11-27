@@ -325,3 +325,35 @@ for (const action of ['stop', 'status']) {
     assert.doesNotMatch(f.calls(), /load --input|\b(?:down|prune|rm)\b/);
   });
 }
+
+function armBundle(f) {
+  f.write('image-metadata.txt', `IMAGE_ID=${imageId}\nIMAGE_PLATFORM=linux/arm64\n`);
+  const compose = readFileSync(join(f.root, 'docker-compose.yml'), 'utf8');
+  f.write('docker-compose.yml', compose.replace('image: yingjian-server:0.1.4-nas1', 'image: yingjian-server:0.1.4-nas1-arm64\n    platform: linux/arm64'));
+}
+for (const host of ['linux/aarch64', 'linux/arm64']) {
+  test(`ARM64 update on ${host} uses matching tag and preserves original volume (mock Docker)`, { skip: !supported }, t => {
+    const f = fixture(t);
+    armBundle(f);
+    const result = f.run('update', { FAKE_HOST_PLATFORM: host, FAKE_IMAGE_PLATFORM: 'linux/arm64', FAKE_CONTAINER: 'yes' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(f.calls(), /yingjian-server:0\.1\.4-nas1-arm64/);
+    assert.match(f.calls(), /-p legacy up -d --no-build --pull never\|volume=legacy_yingjian-data/);
+  });
+}
+for (const host of ['linux/x86_64', 'linux/amd64', 'linux/armv7l']) {
+  test(`ARM64 bundle refuses ${host} without imports or config changes (mock Docker)`, { skip: !supported }, t => {
+    const f = fixture(t);
+    armBundle(f);
+    const before = f.config();
+    assert.notEqual(f.run('update', { FAKE_HOST_PLATFORM: host }).status, 0);
+    assert.doesNotMatch(f.calls(), /load --input|up -d/);
+    assert.equal(f.config(), before);
+  });
+}
+test('ARM64 metadata rejects AMD64 Compose before Docker access', { skip: !supported }, t => {
+  const f = fixture(t);
+  f.write('image-metadata.txt', `IMAGE_ID=${imageId}\nIMAGE_PLATFORM=linux/arm64\n`);
+  assert.notEqual(f.run().status, 0);
+  assert.equal(f.calls(), '');
+});

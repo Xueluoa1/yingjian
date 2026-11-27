@@ -1,0 +1,77 @@
+name: Build verified NAS offline image
+
+on:
+  push:
+    branches: ['codex/nas-arm64-build-*']
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: NAS CPU architecture
+        type: choice
+        required: true
+        default: arm64
+        options:
+          - arm64
+          - amd64
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: Verify Linux ${{ inputs.architecture || 'arm64' }} image
+    runs-on: ${{ inputs.architecture == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 35
+    env:
+      NAS_ARCH: ${{ inputs.architecture || 'arm64' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Build and run isolated container verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$NAS_ARCH" in amd64|arm64) ;; *) exit 1 ;; esac
+          sh scripts/build-nas-image.sh "$RUNNER_TEMP/nas-image" "$NAS_ARCH"
+          bundle="$RUNNER_TEMP/nas-image/Yingjian-Server-0.1.4-nas1-linux-$NAS_ARCH-Offline"
+          node scripts/verify-nas-offline.mjs "$bundle" --platform "linux/$NAS_ARCH"
+      - name: Package the verified files only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, zipfile
+          arch = os.environ['NAS_ARCH']
+          assert arch in ('amd64', 'arm64')
+          name = f'Yingjian-Server-0.1.4-nas1-linux-{arch}-Offline'
+          bundle = pathlib.Path(os.environ['RUNNER_TEMP']) / 'nas-image' / name
+          manifest = json.loads((bundle / 'manifest.json').read_text())
+          assert manifest['image']['platform'] == f'linux/{arch}'
+          names = sorted([*manifest['files'], 'manifest.json'])
+          expected = {'image.tar','image-metadata.txt','image.tar.sha256','verification.json','docker-compose.yml','.env.example','deploy.sh','README.md','THIRD-PARTY.md','manifest.json'}
+          assert set(names) == expected
+          out = pathlib.Path('release/nas-artifact')
+          out.mkdir(parents=True, exist_ok=False)
+          archive = out / f'{name}.zip'
+          with zipfile.ZipFile(archive, 'x', zipfile.ZIP_DEFLATED, compresslevel=6) as zipped:
+              for filename in names:
+                  source = bundle / filename
+                  assert source.is_file() and not source.is_symlink()
+                  zipped.write(source, f'{name}/{filename}')
+          with archive.open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          (out / f'{name}.zip.sha256').write_text(f'{digest}  {name}.zip\n')
+          PY
+      - name: Upload verified offline package
+        uses: actions/upload-artifact@v7
+        with:
+          name: Yingjian-NAS-linux-${{ inputs.architecture || 'arm64' }}-Offline
+          path: release/nas-artifact/*
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
